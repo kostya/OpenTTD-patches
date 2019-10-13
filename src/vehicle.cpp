@@ -33,6 +33,7 @@
 #include "autoreplace_gui.h"
 #include "station_base.h"
 #include "ai/ai.hpp"
+#include "depot_base.h"
 #include "depot_func.h"
 #include "network/network.h"
 #include "core/pool_func.hpp"
@@ -2122,6 +2123,29 @@ uint8 CalcPercentVehicleFilled(const Vehicle *front, StringID *colour)
 }
 
 /**
+ * Refit vehicle when it enter to depot
+ */
+void HandleRefitWhenEnterDepotTo(Vehicle *v, CargoID cargo){
+	Backup<CompanyID> cur_company(_current_company, v->owner, FILE_LINE);
+	CommandCost cost = DoCommand(v->tile, v->index, cargo | 0xFF << 8, DC_EXEC, GetCmdRefitVeh(v));
+	cur_company.Restore();
+
+	if (cost.Failed()) {
+		_vehicles_to_autoreplace[v->index] = false;
+		if (v->owner == _local_company) {
+			/* Notify the user that we stopped the vehicle */
+			SetDParam(0, v->index);
+			AddVehicleAdviceNewsItem(STR_NEWS_ORDER_REFIT_FAILED, v->index);
+		}
+	} else if (cost.GetCost() != 0) {
+		v->profit_this_year -= cost.GetCost() << 8;
+		if (v->owner == _local_company) {
+			ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
+		}
+	}
+}
+
+/**
  * Vehicle entirely entered the depot, update its status, orders, vehicle windows, service it, etc.
  * @param v Vehicle that entered a depot.
  */
@@ -2188,6 +2212,9 @@ void VehicleEnterDepot(Vehicle *v)
 
 	InvalidateWindowData(WC_VEHICLE_VIEW, v->index);
 
+  bool refitted = false;
+  CargoID cargroed = CT_INVALID;
+
 	if (v->current_order.IsType(OT_GOTO_DEPOT)) {
 		SetWindowDirty(WC_VEHICLE_VIEW, v->index);
 
@@ -2208,23 +2235,9 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 
 		if (v->current_order.IsRefit()) {
-			Backup<CompanyID> cur_company(_current_company, v->owner, FILE_LINE);
-			CommandCost cost = DoCommand(v->tile, v->index, v->current_order.GetRefitCargo() | 0xFF << 8, DC_EXEC, GetCmdRefitVeh(v));
-			cur_company.Restore();
-
-			if (cost.Failed()) {
-				_vehicles_to_autoreplace[v->index] = false;
-				if (v->owner == _local_company) {
-					/* Notify the user that we stopped the vehicle */
-					SetDParam(0, v->index);
-					AddVehicleAdviceNewsItem(STR_NEWS_ORDER_REFIT_FAILED, v->index);
-				}
-			} else if (cost.GetCost() != 0) {
-				v->profit_this_year -= cost.GetCost() << 8;
-				if (v->owner == _local_company) {
-					ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
-				}
-			}
+			HandleRefitWhenEnterDepotTo(v, v->current_order.GetRefitCargo());
+			refitted = true;
+			cargroed = v->current_order.GetRefitCargo();
 		}
 
 		/* Handle the ODTFB_PART_OF_ORDERS case. If there is a timetabled wait time, hold the train, otherwise skip to the next order.
@@ -2258,8 +2271,27 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 		v->current_order.MakeDummy();
 	}
-}
 
+	// DepotID id = GetDepotIndex(v->tile);
+	// printf("Vehicle enter depot %d %d %id\n", v->unitnumber, v->current_order.IsRefit() ? 1 : 0, id);
+	if (IsRailDepotTile(v->tile)) {
+		Depot *d = Depot::GetByTile(v->tile);
+		if (d) {
+			if (refitted) {
+				d->force_refit_to	= cargroed;
+			} else {
+				CargoID cargo = d->force_refit_to;
+				if (IsCargoIDValid(cargo)) {
+					printf("Force refit to %d\n", cargo);
+					HandleRefitWhenEnterDepotTo(v, cargo);
+				}
+			}
+		}
+	}
+	// if (IsCargoIDValid(depot.force_refit_to) && !refitted) {
+	// 	HandleRefitWhenEnterDepotTo(v, depot.force_refit_to);
+ //  }
+}
 
 /**
  * Update the position of the vehicle. This will update the hash that tells

@@ -25,8 +25,9 @@ struct Depot : DepotPool::PoolItem<&_depot_pool> {
 	TileIndex xy;
 	uint16 town_cn;    ///< The N-1th depot for this town (consecutive number)
 	Date build_date;   ///< Date of construction
+	CargoID force_refit_to; 
 
-	Depot(TileIndex xy = INVALID_TILE) : xy(xy) {}
+	Depot(TileIndex xy = INVALID_TILE) : xy(xy), force_refit_to(CT_INVALID) {}
 	~Depot();
 
 	static inline Depot *GetByTile(TileIndex tile)
