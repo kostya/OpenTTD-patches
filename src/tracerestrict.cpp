@@ -234,7 +234,7 @@ static bool TestStationCondition(StationID station, TraceRestrictItem item)
  * @p v may not be nullptr
  * @p out should be zero-initialised
  */
-void TraceRestrictProgram::Execute(const Train* v, const TraceRestrictProgramInput &input, TraceRestrictProgramResult& out) const
+void TraceRestrictProgram::Execute(const Train* v, const TraceRestrictProgramInput &input, TraceRestrictProgramResult& out)
 {
 	// static to avoid needing to re-alloc/resize on each execution
 	static std::vector<TraceRestrictCondStackFlags> condstack;
@@ -499,6 +499,19 @@ void TraceRestrictProgram::Execute(const Train* v, const TraceRestrictProgramInp
 						break;
 					}
 
+					case TRIT_COND_LOGICAL: {
+						uint32 currentid = this->probecount++;
+
+						uint8 a = (condvalue >> 8) & 0xFF;
+						if (a == 0) a = 1;
+						uint8 b = condvalue & 0xFF;
+
+						result = TestCondition(currentid % a, condop, b);
+
+						printf("logical %d %d %d %d %d\n============\n", currentid, a, b, currentid % a, result);
+						break;
+					}
+
 					default:
 						NOT_REACHED();
 				}
@@ -729,6 +742,7 @@ CommandCost TraceRestrictProgram::Validate(const std::vector<TraceRestrictItem> 
 				case TRIT_COND_TRAIN_OWNER:
 				case TRIT_COND_TRAIN_STATUS:
 				case TRIT_COND_LOAD_PERCENT:
+				case TRIT_COND_LOGICAL:
 					break;
 
 				default:

@@ -139,6 +139,7 @@ enum TraceRestrictItemType {
 	TRIT_COND_TRAIN_OWNER         = 24,   ///< Test train owner
 	TRIT_COND_TRAIN_STATUS        = 25,   ///< Test train status
 	TRIT_COND_LOAD_PERCENT        = 26,   ///< Test train load percentage
+	TRIT_COND_LOGICAL             = 27,   ///< Test logical condition
 
 	TRIT_COND_END                 = 48,   ///< End (exclusive) of conditional item types, note that this has the same value as TRIT_REVERSE
 	TRIT_REVERSE                  = 48,   ///< Reverse behind signal
@@ -376,12 +377,13 @@ struct TraceRestrictProgramResult {
 struct TraceRestrictProgram : TraceRestrictProgramPool::PoolItem<&_tracerestrictprogram_pool> {
 	std::vector<TraceRestrictItem> items;
 	uint32 refcount;
+	uint32 probecount;
 	TraceRestrictProgramActionsUsedFlags actions_used_flags;
 
 	TraceRestrictProgram()
-			: refcount(0), actions_used_flags(static_cast<TraceRestrictProgramActionsUsedFlags>(0)) { }
+			: refcount(0), probecount(0), actions_used_flags(static_cast<TraceRestrictProgramActionsUsedFlags>(0)) { }
 
-	void Execute(const Train *v, const TraceRestrictProgramInput &input, TraceRestrictProgramResult &out) const;
+	void Execute(const Train *v, const TraceRestrictProgramInput &input, TraceRestrictProgramResult &out);
 
 	/**
 	 * Increment ref count, only use when creating a mapping
@@ -683,6 +685,10 @@ static inline TraceRestrictTypePropertySet GetTraceRestrictTypeProperties(TraceR
 				out.value_type = TRVT_PERCENT;
 				break;
 
+			case TRIT_COND_LOGICAL:
+				out.value_type = TRVT_INT;
+				break;
+
 			default:
 				NOT_REACHED();
 				break;
@@ -754,7 +760,7 @@ void TraceRestrictNotifySignalRemoval(TileIndex tile, Track track);
 /**
  * Gets the existing signal program for the tile identified by @p t and @p track, or nullptr
  */
-static inline const TraceRestrictProgram *GetExistingTraceRestrictProgram(TileIndex t, Track track)
+static inline TraceRestrictProgram *GetExistingTraceRestrictProgram(TileIndex t, Track track)
 {
 	if (IsRestrictedSignal(t)) {
 		return GetTraceRestrictProgram(MakeTraceRestrictRefId(t, track), false);

@@ -259,7 +259,7 @@ private:
 	// returns true if dead end bit has been set
 	inline bool ExecuteTraceRestrict(Node& n, TileIndex tile, Trackdir trackdir, int& cost, TraceRestrictProgramResult &out, bool *is_res_through)
 	{
-		const TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(tile, TrackdirToTrack(trackdir));
+		TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(tile, TrackdirToTrack(trackdir));
 		TraceRestrictProgramActionsUsedFlags flags_to_check = TRPAUF_PF;
 		if (is_res_through != nullptr) {
 			*is_res_through = false;

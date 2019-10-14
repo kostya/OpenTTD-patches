@@ -529,7 +529,7 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		/* PBS signal on next trackdir? Conditionally safe position. */
 		if (HasPbsSignalOnTrackdir(ft.m_new_tile, td)) {
 			if (IsRestrictedSignal(ft.m_new_tile)) {
-				const TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(ft.m_new_tile, TrackdirToTrack(td));
+				TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(ft.m_new_tile, TrackdirToTrack(td));
 				if (prog && prog->actions_used_flags & TRPAUF_RESERVE_THROUGH) {
 					TraceRestrictProgramResult out;
 					prog->Execute(v, TraceRestrictProgramInput(ft.m_new_tile, td, &VehiclePosTraceRestrictPreviousSignalCallback, nullptr), out);
@@ -577,7 +577,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 
 	auto pbs_res_end_wait_test = [v, restricted_signal_info](TileIndex t, Trackdir td) -> bool {
 		if (IsRestrictedSignal(t)) {
-			const TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(t, TrackdirToTrack(td));
+			TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(t, TrackdirToTrack(td));
 			if (restricted_signal_info && prog) {
 				restricted_signal_info->tile = t;
 				restricted_signal_info->trackdir = td;
