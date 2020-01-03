@@ -49,6 +49,8 @@
 
 #include "safeguards.h"
 
+#define PRODUCE_CARGO_MULTIPLIER 100
+
 IndustryPool _industry_pool("Industry");
 INSTANTIATE_POOL_METHODS(Industry)
 
@@ -1143,7 +1145,7 @@ static void ProduceIndustryGoods(Industry *i)
 
 		IndustryBehaviour indbehav = indsp->behaviour;
 		for (size_t j = 0; j < lengthof(i->produced_cargo_waiting); j++) {
-			i->produced_cargo_waiting[j] = min(0xffff, i->produced_cargo_waiting[j] + i->production_rate[j]);
+			i->produced_cargo_waiting[j] = min(0xffff, i->produced_cargo_waiting[j] + i->production_rate[j] * PRODUCE_CARGO_MULTIPLIER);
 		}
 
 		if ((indbehav & INDUSTRYBEH_PLANT_FIELDS) != 0) {
