@@ -2322,15 +2322,6 @@ void VehicleEnterDepot(Vehicle *v)
 }
 
 /**
- * Update the position of the vehicle. This will update the hash that tells
- *  which vehicles are on a tile.
- */
-void Vehicle::UpdatePosition()
-{
-	UpdateVehicleTileHash(this, false);
-}
-
-/**
  * Update the vehicle on the viewport, updating the right hash and setting the
  *  new coordinates.
  * @param dirty Mark the (new and old) coordinates of the vehicle as dirty.
