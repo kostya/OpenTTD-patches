@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -60,6 +58,7 @@ ScriptInstance::ScriptInstance(const char *APIName) :
 	is_save_data_on_stack(false),
 	suspend(0),
 	is_paused(false),
+	in_shutdown(false),
 	callback(nullptr)
 {
 	this->storage = new ScriptStorage();
@@ -89,8 +88,12 @@ void ScriptInstance::Initialize(const char *main_script, const char *instance_na
 		}
 
 		/* Create the main-class */
-		this->instance = MallocT<SQObject>(1);
+		this->instance = new SQObject();
 		if (!this->engine->CreateClassInstance(instance_name, this->controller, this->instance)) {
+			/* If CreateClassInstance has returned false instance has not been
+			 * registered with squirrel, so avoid trying to Release it by clearing it now */
+			delete this->instance;
+			this->instance = nullptr;
 			this->Died();
 			return;
 		}
@@ -134,12 +137,13 @@ bool ScriptInstance::LoadCompatibilityScripts(const char *api_version, Subdirect
 ScriptInstance::~ScriptInstance()
 {
 	ScriptObject::ActiveInstance active(this);
+	this->in_shutdown = true;
 
 	if (instance != nullptr) this->engine->ReleaseObject(this->instance);
 	if (engine != nullptr) delete this->engine;
 	delete this->storage;
 	delete this->controller;
-	free(this->instance);
+	delete this->instance;
 }
 
 void ScriptInstance::Continue()
@@ -152,10 +156,12 @@ void ScriptInstance::Died()
 {
 	DEBUG(script, 0, "The script died unexpectedly.");
 	this->is_dead = true;
+	this->in_shutdown = true;
 
 	this->last_allocated_memory = this->GetAllocatedMemory(); // Update cache
 
 	if (this->instance != nullptr) this->engine->ReleaseObject(this->instance);
+	delete this->instance;
 	delete this->engine;
 	this->instance = nullptr;
 	this->engine = nullptr;
@@ -714,4 +720,9 @@ size_t ScriptInstance::GetAllocatedMemory() const
 {
 	if (this->engine == nullptr) return this->last_allocated_memory;
 	return this->engine->GetAllocatedMemory();
+}
+
+void ScriptInstance::ReleaseSQObject(HSQOBJECT *obj)
+{
+	if (!this->in_shutdown) this->engine->ReleaseObject(obj);
 }

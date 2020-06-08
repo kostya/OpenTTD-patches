@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -90,7 +88,6 @@
 
 void CallLandscapeTick();
 void IncreaseDate();
-void DoPaletteAnimations();
 void MusicLoop();
 void ResetMusic();
 void CallWindowGameTickEvent();
@@ -338,14 +335,24 @@ static void WriteSavegameDebugData(const char *name)
 	};
 	p += seprintf(p, buflast, "Name:         %s\n", name);
 	if (_load_check_data.debug_log_data.size()) {
-		p += seprintf(p, buflast, "%u bytes of debug data in savegame\n", (uint) _load_check_data.debug_log_data.size());
+		p += seprintf(p, buflast, "%u bytes of debug log data in savegame\n", (uint) _load_check_data.debug_log_data.size());
 		std::string buffer = _load_check_data.debug_log_data;
 		ProcessLineByLine(const_cast<char *>(buffer.data()), [&](const char *line) {
 			if (buflast - p <= 1024) bump_size();
 			p += seprintf(p, buflast, "> %s\n", line);
 		});
 	} else {
-		p += seprintf(p, buflast, "No debug data in savegame\n");
+		p += seprintf(p, buflast, "No debug log data in savegame\n");
+	}
+	if (_load_check_data.debug_config_data.size()) {
+		p += seprintf(p, buflast, "%u bytes of debug config data in savegame\n", (uint) _load_check_data.debug_config_data.size());
+		std::string buffer = _load_check_data.debug_config_data;
+		ProcessLineByLine(const_cast<char *>(buffer.data()), [&](const char *line) {
+			if (buflast - p <= 1024) bump_size();
+			p += seprintf(p, buflast, "> %s\n", line);
+		});
+	} else {
+		p += seprintf(p, buflast, "No debug config data in savegame\n");
 	}
 
 	/* ShowInfo put output to stderr, but version information should go
@@ -434,6 +441,7 @@ static void ShutdownGame()
 	_game_load_tick_skip_counter = 0;
 	_game_load_time = 0;
 	_loadgame_DBGL_data.clear();
+	_loadgame_DBGC_data.clear();
 }
 
 /**
@@ -663,17 +671,17 @@ static const OptionData _options[] = {
 int openttd_main(int argc, char *argv[])
 {
 	SetSelfAsMainThread();
-	char *musicdriver = nullptr;
-	char *sounddriver = nullptr;
-	char *videodriver = nullptr;
-	char *blitter = nullptr;
-	char *graphics_set = nullptr;
-	char *sounds_set = nullptr;
-	char *music_set = nullptr;
+	std::string musicdriver;
+	std::string sounddriver;
+	std::string videodriver;
+	std::string blitter;
+	std::string graphics_set;
+	std::string sounds_set;
+	std::string music_set;
 	Dimension resolution = {0, 0};
 	/* AfterNewGRFScan sets save_config to true after scanning completed. */
 	bool save_config = false;
-	AfterNewGRFScan *scanner = new AfterNewGRFScan(&save_config);
+	std::unique_ptr<AfterNewGRFScan> scanner(new AfterNewGRFScan(&save_config));
 	bool dedicated = false;
 	char *debuglog_conn = nullptr;
 
@@ -693,22 +701,18 @@ int openttd_main(int argc, char *argv[])
 	int i;
 	while ((i = mgo.GetOpt()) != -1) {
 		switch (i) {
-		case 'I': free(graphics_set); graphics_set = stredup(mgo.opt); break;
-		case 'S': free(sounds_set); sounds_set = stredup(mgo.opt); break;
-		case 'M': free(music_set); music_set = stredup(mgo.opt); break;
-		case 'm': free(musicdriver); musicdriver = stredup(mgo.opt); break;
-		case 's': free(sounddriver); sounddriver = stredup(mgo.opt); break;
-		case 'v': free(videodriver); videodriver = stredup(mgo.opt); break;
-		case 'b': free(blitter); blitter = stredup(mgo.opt); break;
+		case 'I': graphics_set = mgo.opt; break;
+		case 'S': sounds_set = mgo.opt; break;
+		case 'M': music_set = mgo.opt; break;
+		case 'm': musicdriver = mgo.opt; break;
+		case 's': sounddriver = mgo.opt; break;
+		case 'v': videodriver = mgo.opt; break;
+		case 'b': blitter = mgo.opt; break;
 		case 'D':
-			free(musicdriver);
-			free(sounddriver);
-			free(videodriver);
-			free(blitter);
-			musicdriver = stredup("null");
-			sounddriver = stredup("null");
-			videodriver = stredup("dedicated");
-			blitter = stredup("null");
+			musicdriver = "null";
+			sounddriver = "null";
+			videodriver = "dedicated";
+			blitter = "null";
 			dedicated = true;
 			SetDebugString("net=6");
 			if (mgo.opt != nullptr) {
@@ -772,7 +776,7 @@ int openttd_main(int argc, char *argv[])
 			DeterminePaths(argv[0]);
 			if (StrEmpty(mgo.opt)) {
 				ret = 1;
-				goto exit_noshutdown;
+				return ret;
 			}
 
 			char title[80];
@@ -780,7 +784,7 @@ int openttd_main(int argc, char *argv[])
 			FiosGetSavegameListCallback(SLO_LOAD, mgo.opt, strrchr(mgo.opt, '.'), title, lastof(title));
 
 			_load_check_data.Clear();
-			if (i == 'K') _load_check_data.want_debug_log_data = true;
+			if (i == 'K') _load_check_data.want_debug_data = true;
 			SaveOrLoadResult res = SaveOrLoad(mgo.opt, SLO_CHECK, DFT_GAME_FILE, SAVE_DIR, false);
 			if (res != SL_OK || _load_check_data.HasErrors()) {
 				fprintf(stderr, "Failed to open savegame\n");
@@ -791,7 +795,7 @@ int openttd_main(int argc, char *argv[])
 					GetString(buf, _load_check_data.error, lastof(buf));
 					fprintf(stderr, "%s\n", buf);
 				}
-				goto exit_noshutdown;
+				return ret;
 			}
 
 			if (i == 'q') {
@@ -799,8 +803,7 @@ int openttd_main(int argc, char *argv[])
 			} else {
 				WriteSavegameDebugData(title);
 			}
-
-			goto exit_noshutdown;
+			return ret;
 		}
 		case 'G': scanner->generation_seed = strtoul(mgo.opt, nullptr, 10); break;
 		case 'c': free(_config_file); _config_file = stredup(mgo.opt); break;
@@ -808,7 +811,7 @@ int openttd_main(int argc, char *argv[])
 		case 'J': _quit_after_days = Clamp(atoi(mgo.opt), 0, INT_MAX); break;
 		case 'Z': {
 			CrashLog::VersionInfoLog();
-			goto exit_noshutdown;
+			return ret;
 		}
 		case 'h':
 			i = -2; // Force printing of help.
@@ -829,8 +832,7 @@ int openttd_main(int argc, char *argv[])
 		BaseSounds::FindSets();
 		BaseMusic::FindSets();
 		ShowHelp();
-
-		goto exit_noshutdown;
+		return ret;
 	}
 
 	DeterminePaths(argv[0]);
@@ -873,24 +875,23 @@ int openttd_main(int argc, char *argv[])
 	InitWindowSystem();
 
 	BaseGraphics::FindSets();
-	if (graphics_set == nullptr && BaseGraphics::ini_set != nullptr) graphics_set = stredup(BaseGraphics::ini_set);
+	if (graphics_set.empty() && !BaseGraphics::ini_set.empty()) graphics_set = BaseGraphics::ini_set;
 	if (!BaseGraphics::SetSet(graphics_set)) {
-		if (!StrEmpty(graphics_set)) {
-			BaseGraphics::SetSet(nullptr);
+		if (!graphics_set.empty()) {
+			BaseGraphics::SetSet({});
 
 			ErrorMessageData msg(STR_CONFIG_ERROR, STR_CONFIG_ERROR_INVALID_BASE_GRAPHICS_NOT_FOUND);
-			msg.SetDParamStr(0, graphics_set);
+			msg.SetDParamStr(0, graphics_set.c_str());
 			ScheduleErrorMessage(msg);
 		}
 	}
-	free(graphics_set);
 
 	/* Initialize game palette */
 	GfxInitPalettes();
 
 	DEBUG(misc, 1, "Loading blitter...");
-	if (blitter == nullptr && _ini_blitter != nullptr) blitter = stredup(_ini_blitter);
-	_blitter_autodetected = StrEmpty(blitter);
+	if (blitter.empty() && !_ini_blitter.empty()) blitter = _ini_blitter;
+	_blitter_autodetected = blitter.empty();
 	/* Activate the initial blitter.
 	 * This is only some initial guess, after NewGRFs have been loaded SwitchNewGRFBlitter may switch to a different one.
 	 *  - Never guess anything, if the user specified a blitter. (_blitter_autodetected)
@@ -901,16 +902,14 @@ int openttd_main(int argc, char *argv[])
 			(_support8bpp != S8BPP_NONE && (BaseGraphics::GetUsedSet() == nullptr || BaseGraphics::GetUsedSet()->blitter == BLT_8BPP)) ||
 			BlitterFactory::SelectBlitter("32bpp-anim") == nullptr) {
 		if (BlitterFactory::SelectBlitter(blitter) == nullptr) {
-			StrEmpty(blitter) ?
+			blitter.empty() ?
 				usererror("Failed to autoprobe blitter") :
-				usererror("Failed to select requested blitter '%s'; does it exist?", blitter);
+				usererror("Failed to select requested blitter '%s'; does it exist?", blitter.c_str());
 		}
 	}
-	free(blitter);
 
-	if (videodriver == nullptr && _ini_videodriver != nullptr) videodriver = stredup(_ini_videodriver);
+	if (videodriver.empty() && !_ini_videodriver.empty()) videodriver = _ini_videodriver;
 	DriverFactoryBase::SelectDriver(videodriver, Driver::DT_VIDEO);
-	free(videodriver);
 
 	InitializeSpriteSorter();
 
@@ -934,8 +933,7 @@ int openttd_main(int argc, char *argv[])
 
 	if (!HandleBootstrap()) {
 		ShutdownGame();
-
-		goto exit_bootstrap;
+		return ret;
 	}
 
 	VideoDriver::GetInstance()->ClaimMousePointer();
@@ -944,38 +942,34 @@ int openttd_main(int argc, char *argv[])
 	InitializeScreenshotFormats();
 
 	BaseSounds::FindSets();
-	if (sounds_set == nullptr && BaseSounds::ini_set != nullptr) sounds_set = stredup(BaseSounds::ini_set);
+	if (sounds_set.empty() && !BaseSounds::ini_set.empty()) sounds_set = BaseSounds::ini_set;
 	if (!BaseSounds::SetSet(sounds_set)) {
-		if (StrEmpty(sounds_set) || !BaseSounds::SetSet(nullptr)) {
-			usererror("Failed to find a sounds set. Please acquire a sounds set for OpenTTD. See section 4.1 of README.md.");
+		if (sounds_set.empty() || !BaseSounds::SetSet({})) {
+			usererror("Failed to find a sounds set. Please acquire a sounds set for OpenTTD. See section 1.4 of README.md.");
 		} else {
 			ErrorMessageData msg(STR_CONFIG_ERROR, STR_CONFIG_ERROR_INVALID_BASE_SOUNDS_NOT_FOUND);
-			msg.SetDParamStr(0, sounds_set);
+			msg.SetDParamStr(0, sounds_set.c_str());
 			ScheduleErrorMessage(msg);
 		}
 	}
-	free(sounds_set);
 
 	BaseMusic::FindSets();
-	if (music_set == nullptr && BaseMusic::ini_set != nullptr) music_set = stredup(BaseMusic::ini_set);
+	if (music_set.empty() && !BaseMusic::ini_set.empty()) music_set = BaseMusic::ini_set;
 	if (!BaseMusic::SetSet(music_set)) {
-		if (StrEmpty(music_set) || !BaseMusic::SetSet(nullptr)) {
-			usererror("Failed to find a music set. Please acquire a music set for OpenTTD. See section 4.1 of README.md.");
+		if (music_set.empty() || !BaseMusic::SetSet({})) {
+			usererror("Failed to find a music set. Please acquire a music set for OpenTTD. See section 1.4 of README.md.");
 		} else {
 			ErrorMessageData msg(STR_CONFIG_ERROR, STR_CONFIG_ERROR_INVALID_BASE_MUSIC_NOT_FOUND);
-			msg.SetDParamStr(0, music_set);
+			msg.SetDParamStr(0, music_set.c_str());
 			ScheduleErrorMessage(msg);
 		}
 	}
-	free(music_set);
 
-	if (sounddriver == nullptr && _ini_sounddriver != nullptr) sounddriver = stredup(_ini_sounddriver);
+	if (sounddriver.empty() && !_ini_sounddriver.empty()) sounddriver = _ini_sounddriver;
 	DriverFactoryBase::SelectDriver(sounddriver, Driver::DT_SOUND);
-	free(sounddriver);
 
-	if (musicdriver == nullptr && _ini_musicdriver != nullptr) musicdriver = stredup(_ini_musicdriver);
+	if (musicdriver.empty() && !_ini_musicdriver.empty()) musicdriver = _ini_musicdriver;
 	DriverFactoryBase::SelectDriver(musicdriver, Driver::DT_MUSIC);
-	free(musicdriver);
 
 	/* Take our initial lock on whatever we might want to do! */
 	try {
@@ -995,8 +989,7 @@ int openttd_main(int argc, char *argv[])
 	CheckForMissingGlyphs();
 
 	/* ScanNewGRFFiles now has control over the scanner. */
-	ScanNewGRFFiles(scanner);
-	scanner = nullptr;
+	ScanNewGRFFiles(scanner.release());
 
 	VideoDriver::GetInstance()->MainLoop();
 
@@ -1015,38 +1008,6 @@ int openttd_main(int argc, char *argv[])
 
 	/* Reset windowing system, stop drivers, free used memory, ... */
 	ShutdownGame();
-	goto exit_normal;
-
-exit_noshutdown:
-	/* These three are normally freed before bootstrap. */
-	free(graphics_set);
-	free(videodriver);
-	free(blitter);
-
-exit_bootstrap:
-	/* These are normally freed before exit, but after bootstrap. */
-	free(sounds_set);
-	free(music_set);
-	free(musicdriver);
-	free(sounddriver);
-
-exit_normal:
-	free(BaseGraphics::ini_set);
-	free(BaseSounds::ini_set);
-	free(BaseMusic::ini_set);
-
-	free(_ini_musicdriver);
-	free(_ini_sounddriver);
-	free(_ini_videodriver);
-	free(_ini_blitter);
-
-	delete scanner;
-
-	extern FILE *_log_fd;
-	if (_log_fd != nullptr) {
-		fclose(_log_fd);
-	}
-
 	return ret;
 }
 
@@ -1316,9 +1277,9 @@ void SwitchToMode(SwitchMode new_mode)
 
 		case SM_MENU: // Switch to game intro menu
 			LoadIntroGame();
-			if (BaseSounds::ini_set == nullptr && BaseSounds::GetUsedSet()->fallback) {
+			if (BaseSounds::ini_set.empty() && BaseSounds::GetUsedSet()->fallback) {
 				ShowErrorMessage(STR_WARNING_FALLBACK_SOUNDSET, INVALID_STRING_ID, WL_CRITICAL);
-				BaseSounds::ini_set = stredup(BaseSounds::GetUsedSet()->name);
+				BaseSounds::ini_set = BaseSounds::GetUsedSet()->name;
 			}
 			break;
 
@@ -1409,8 +1370,7 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 	std::vector<CargoTypes> old_town_cargo_accepted_totals;
 	std::vector<CargoTypes> old_town_cargo_produced;
 	std::vector<StationList> old_town_stations_nears;
-	Town *t;
-	FOR_ALL_TOWNS(t) {
+	for (const Town *t : Town::Iterate()) {
 		old_town_caches.push_back(t->cache);
 		old_town_cargo_accepted_totals.push_back(t->cargo_accepted_total);
 		old_town_cargo_produced.push_back(t->cargo_produced);
@@ -1419,15 +1379,15 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 
 	std::vector<IndustryList> old_station_industries_nears;
 	std::vector<BitmapTileArea> old_station_catchment_tiles;
-	Station *st;
-	FOR_ALL_STATIONS(st) {
+	std::vector<uint> old_station_tiles;
+	for (Station *st : Station::Iterate()) {
 		old_station_industries_nears.push_back(st->industries_near);
 		old_station_catchment_tiles.push_back(st->catchment_tiles);
+		old_station_tiles.push_back(st->station_tiles);
 	}
 
 	std::vector<StationList> old_industry_stations_nears;
-	Industry *ind;
-	FOR_ALL_INDUSTRIES(ind) {
+	for (Industry *ind : Industry::Iterate()) {
 		old_industry_stations_nears.push_back(ind->stations_near);
 	}
 
@@ -1440,7 +1400,7 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 	Station::RecomputeCatchmentForAll();
 
 	uint i = 0;
-	FOR_ALL_TOWNS(t) {
+	for (Town *t : Town::Iterate()) {
 		if (MemCmpT(old_town_caches.data() + i, &t->cache) != 0) {
 			CCLOG("town cache mismatch: town %i", (int)t->index);
 		}
@@ -1459,17 +1419,20 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 		CCLOG("_town_cargoes_accepted mismatch: old: " OTTD_PRINTFHEX64 ". new: " OTTD_PRINTFHEX64, old_town_cargoes_accepted, _town_cargoes_accepted);
 	}
 	i = 0;
-	FOR_ALL_STATIONS(st) {
+	for (Station *st : Station::Iterate()) {
 		if (old_station_industries_nears[i] != st->industries_near) {
 			CCLOG("station industries_near mismatch: st %i, (old size: %u, new size: %u)", (int)st->index, (uint)old_station_industries_nears[i].size(), (uint)st->industries_near.size());
 		}
 		if (!(old_station_catchment_tiles[i] == st->catchment_tiles)) {
 			CCLOG("station catchment_tiles mismatch: st %i", (int)st->index);
 		}
+		if (!(old_station_tiles[i] == st->station_tiles)) {
+			CCLOG("station station_tiles mismatch: st %i, (old: %u, new: %u)", (int)st->index, old_station_tiles[i], st->station_tiles);
+		}
 		i++;
 	}
 	i = 0;
-	FOR_ALL_INDUSTRIES(ind) {
+	for (Industry *ind : Industry::Iterate()) {
 		if (old_industry_stations_nears[i] != ind->stations_near) {
 			CCLOG("industry stations_near mismatch: ind %i, (old size: %u, new size: %u)", (int)ind->index, (uint)old_industry_stations_nears[i].size(), (uint)ind->stations_near.size());
 		}
@@ -1480,7 +1443,11 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 				CCLOG("industry neutral station stations_near mismatch: ind %i, (recalc size: %u, neutral size: %u)", (int)ind->index, (uint)ind->stations_near.size(), (uint)stlist.size());
 			}
 		} else {
-			FindStationsAroundTiles(ind->location, &stlist, false, ind->index);
+			ForAllStationsAroundTiles(ind->location, [ind, &stlist](Station *st, TileIndex tile) {
+				if (!IsTileType(tile, MP_INDUSTRY) || GetIndustryIndex(tile) != ind->index) return false;
+				stlist.insert(st);
+				return true;
+			});
 			if (ind->stations_near != stlist) {
 				CCLOG("industry FindStationsAroundTiles mismatch: ind %i, (recalc size: %u, find size: %u)", (int)ind->index, (uint)ind->stations_near.size(), (uint)stlist.size());
 			}
@@ -1490,14 +1457,13 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 
 	/* Check company infrastructure cache. */
 	std::vector<CompanyInfrastructure> old_infrastructure;
-	Company *c;
-	FOR_ALL_COMPANIES(c) old_infrastructure.push_back(c->infrastructure);
+	for (const Company *c : Company::Iterate()) old_infrastructure.push_back(c->infrastructure);
 
 	extern void AfterLoadCompanyStats();
 	AfterLoadCompanyStats();
 
 	i = 0;
-	FOR_ALL_COMPANIES(c) {
+	for (const Company *c : Company::Iterate()) {
 		if (MemCmpT(old_infrastructure.data() + i, &c->infrastructure) != 0) {
 			CCLOG("infrastructure cache mismatch: company %i", (int)c->index);
 			char buffer[4096];
@@ -1516,8 +1482,7 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 	}
 
 	/* Strict checking of the road stop cache entries */
-	const RoadStop *rs;
-	FOR_ALL_ROADSTOPS(rs) {
+	for (const RoadStop *rs : RoadStop::Iterate()) {
 		if (IsStandardRoadStopTile(rs->xy)) continue;
 
 		assert(rs->GetEntry(DIAGDIR_NE) != rs->GetEntry(DIAGDIR_NW));
@@ -1525,8 +1490,7 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 		rs->GetEntry(DIAGDIR_NW)->CheckIntegrity(rs);
 	}
 
-	Vehicle *v;
-	FOR_ALL_VEHICLES(v) {
+	for (Vehicle *v : Vehicle::Iterate()) {
 		extern bool ValidateVehicleTileHash(const Vehicle *v);
 		if (!ValidateVehicleTileHash(v)) {
 			CCLOG("vehicle tile hash mismatch: type %i, vehicle %i, company %i, unit number %i", (int)v->type, v->index, (int)v->owner, v->unitnumber);
@@ -1679,36 +1643,51 @@ void CheckCaches(bool force_check, std::function<void(const char *)> log)
 	}
 
 	/* Check whether the caches are still valid */
-	FOR_ALL_VEHICLES(v) {
+	for (Vehicle *v : Vehicle::Iterate()) {
 		byte buff[sizeof(VehicleCargoList)];
 		memcpy(buff, &v->cargo, sizeof(VehicleCargoList));
 		v->cargo.InvalidateCache();
 		assert(memcmp(&v->cargo, buff, sizeof(VehicleCargoList)) == 0);
 	}
 
-	FOR_ALL_STATIONS(st) {
+	for (Station *st : Station::Iterate()) {
 		for (CargoID c = 0; c < NUM_CARGO; c++) {
 			byte buff[sizeof(StationCargoList)];
 			memcpy(buff, &st->goods[c].cargo, sizeof(StationCargoList));
 			st->goods[c].cargo.InvalidateCache();
 			assert(memcmp(&st->goods[c].cargo, buff, sizeof(StationCargoList)) == 0);
 		}
+
+		/* Check docking tiles */
+		TileArea ta;
+		std::map<TileIndex, bool> docking_tiles;
+		TILE_AREA_LOOP(tile, st->docking_station) {
+			ta.Add(tile);
+			docking_tiles[tile] = IsDockingTile(tile);
+		}
+		UpdateStationDockingTiles(st);
+		if (ta.tile != st->docking_station.tile || ta.w != st->docking_station.w || ta.h != st->docking_station.h) {
+			CCLOG("station docking mismatch: station %i, company %i", st->index, (int)st->owner);
+		}
+		TILE_AREA_LOOP(tile, ta) {
+			if (docking_tiles[tile] != IsDockingTile(tile)) {
+				CCLOG("docking tile mismatch: tile %i", (int)tile);
+			}
+		}
 	}
 
-	OrderList *order_list;
-	FOR_ALL_ORDER_LISTS(order_list) {
+	for (OrderList *order_list : OrderList::Iterate()) {
 		order_list->DebugCheckSanity();
 	}
 
 	extern void ValidateVehicleTickCaches();
 	ValidateVehicleTickCaches();
 
-	FOR_ALL_VEHICLES(v) {
+	for (Vehicle *v : Vehicle::Iterate()) {
 		if (v->Previous()) assert_msg(v->Previous()->Next() == v, "%u", v->index);
 		if (v->Next()) assert_msg(v->Next()->Previous() == v, "%u", v->index);
 	}
-	const TemplateVehicle *tv;
-	FOR_ALL_TEMPLATES(tv) {
+	for (const TemplateVehicle *tv : TemplateVehicle::Iterate()) {
 		if (tv->Prev()) assert_msg(tv->Prev()->Next() == tv, "%u", tv->index);
 		if (tv->Next()) assert_msg(tv->Next()->Prev() == tv, "%u", tv->index);
 	}
@@ -1844,8 +1823,7 @@ void StateGameLoop()
 		NewsLoop();
 		cur_company.Restore();
 
-		Company *c;
-		FOR_ALL_COMPANIES(c) {
+		for (Company *c : Company::Iterate()) {
 			UpdateStateChecksum(c->money);
 		}
 	}
@@ -1921,8 +1899,6 @@ void GameLoop()
 		/* Singleplayer */
 		StateGameLoop();
 	}
-
-	if (!_pause_mode && HasBit(_display_opt, DO_FULL_ANIMATION)) DoPaletteAnimations();
 
 	InputLoop();
 

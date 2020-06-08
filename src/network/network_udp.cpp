@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -205,7 +203,7 @@ void ServerNetworkUDPSocketHandler::Reply_CLIENT_FIND_SERVER_extended(Packet *p,
 	this->SendNetworkGameInfoExtended(&packet, ngi, flags, version);
 
 	/* Let the client know that we are here */
-	this->SendPacket(&packet, client_addr);
+	this->SendPacket(&packet, client_addr, false, false, true);
 
 	DEBUG(net, 2, "[udp] queried (extended: %u) from %s", version, client_addr->GetHostname());
 }
@@ -238,8 +236,7 @@ void ServerNetworkUDPSocketHandler::Receive_CLIENT_DETAIL_INFO(Packet *p, Networ
 
 		for (;;) {
 			int free = SEND_MTU - packet.size;
-			Company *company;
-			FOR_ALL_COMPANIES(company) {
+			for (const Company *company : Company::Iterate()) {
 				char company_name[NETWORK_COMPANY_NAME_LENGTH];
 				SetDParam(0, company->index);
 				GetString(company_name, STR_COMPANY_NAME, company_name + max_cname_length - 1);
@@ -254,9 +251,8 @@ void ServerNetworkUDPSocketHandler::Receive_CLIENT_DETAIL_INFO(Packet *p, Networ
 		}
 	}
 
-	Company *company;
 	/* Go through all the companies */
-	FOR_ALL_COMPANIES(company) {
+	for (const Company *company : Company::Iterate()) {
 		/* Send the information */
 		this->SendCompanyInformation(&packet, company, &company_stats[company->index], max_cname_length);
 	}
@@ -291,7 +287,7 @@ void ServerNetworkUDPSocketHandler::Receive_CLIENT_GET_NEWGRFS(Packet *p, Networ
 	size_t packet_len = 0;
 
 	num_grfs = p->Recv_uint8 ();
-	DEBUG(net, 6, "[udp] newgrf data request (%u) from %s", num_grfs, client_addr->GetAddressAsString());
+	DEBUG(net, 6, "[udp] newgrf data request (%u) from %s", num_grfs, NetworkAddressDumper().GetAddressAsString(client_addr));
 
 	if (num_grfs > NETWORK_MAX_GRF_COUNT) return;
 
@@ -310,7 +306,7 @@ void ServerNetworkUDPSocketHandler::Receive_CLIENT_GET_NEWGRFS(Packet *p, Networ
 		}
 
 		this->SendPacket(&packet, client_addr);
-		DEBUG(net, 6, "[udp] sent newgrf data response (%u of %u) to %s", (uint) in_reply.size(), num_grfs, client_addr->GetAddressAsString());
+		DEBUG(net, 6, "[udp] sent newgrf data response (%u of %u) to %s", (uint) in_reply.size(), num_grfs, NetworkAddressDumper().GetAddressAsString(client_addr));
 
 		packet_len = 0;
 		in_reply.clear();
@@ -341,7 +337,7 @@ void ServerNetworkUDPSocketHandler::Receive_CLIENT_GET_NEWGRFS(Packet *p, Networ
 		 * The name could be an empty string, if so take the filename. */
 		size_t required_length = sizeof(info.ident.grfid) + sizeof(info.ident.md5sum) +
 				min(strlen(info.name) + 1, (size_t)NETWORK_GRF_NAME_LENGTH);
-		if (packet_len + required_length > SEND_MTU - 4) { // 4 is 3 byte header + grf count in reply
+		if (packet_len + required_length > SEND_MTU_SHORT - 4) { // 4 is 3 byte header + grf count in reply
 			flush_response();
 		}
 		packet_len += required_length;
@@ -385,7 +381,7 @@ void ClientNetworkUDPSocketHandler::Receive_SERVER_RESPONSE_Common(Packet *p, Ne
 	/* Just a fail-safe.. should never happen */
 	if (_network_udp_server) return;
 
-	DEBUG(net, 4, "[udp]%s server response from %s", extended ? " extended" : "", client_addr->GetAddressAsString());
+	DEBUG(net, 4, "[udp]%s server response from %s", extended ? " extended" : "", NetworkAddressDumper().GetAddressAsString(client_addr));
 
 	/* Find next item */
 	item = NetworkGameListAddItem(*client_addr);
@@ -422,7 +418,7 @@ void ClientNetworkUDPSocketHandler::Receive_SERVER_RESPONSE_Common(Packet *p, Ne
 
 			this->SendPacket(&packet, &item->address);
 
-			DEBUG(net, 4, "[udp] sent newgrf data request (%u) to %s", in_request_count, client_addr->GetAddressAsString());
+			DEBUG(net, 4, "[udp] sent newgrf data request (%u) to %s", in_request_count, NetworkAddressDumper().GetAddressAsString(client_addr));
 
 			in_request_count = 0;
 		};
@@ -432,7 +428,7 @@ void ClientNetworkUDPSocketHandler::Receive_SERVER_RESPONSE_Common(Packet *p, Ne
 			if (c->status != GCS_NOT_FOUND || strcmp(c->GetName(), UNKNOWN_GRF_NAME_PLACEHOLDER) != 0) continue;
 			in_request[in_request_count] = c;
 			in_request_count++;
-			if (in_request_count == NETWORK_MAX_GRF_COUNT) flush_request();
+			if (in_request_count == NETWORK_MAX_GRF_COUNT_SHORT) flush_request();
 		}
 
 		if (in_request_count > 0) flush_request();
@@ -497,7 +493,7 @@ void ClientNetworkUDPSocketHandler::Receive_SERVER_NEWGRFS(Packet *p, NetworkAdd
 	uint i;
 
 	num_grfs = p->Recv_uint8 ();
-	DEBUG(net, 6, "[udp] newgrf data reply (%u) from %s", num_grfs, client_addr->GetAddressAsString());
+	DEBUG(net, 6, "[udp] newgrf data reply (%u) from %s", num_grfs, NetworkAddressDumper().GetAddressAsString(client_addr));
 
 	if (num_grfs > NETWORK_MAX_GRF_COUNT) return;
 
@@ -515,9 +511,9 @@ void ClientNetworkUDPSocketHandler::Receive_SERVER_NEWGRFS(Packet *p, NetworkAdd
 		/* Try to find the GRFTextWrapper for the name of this GRF ID and MD5sum tuple.
 		 * If it exists and not resolved yet, then name of the fake GRF is
 		 * overwritten with the name from the reply. */
-		GRFTextWrapper *unknown_name = FindUnknownGRFName(c.grfid, c.md5sum, false);
-		if (unknown_name != nullptr && strcmp(GetGRFStringFromGRFText(unknown_name->text), UNKNOWN_GRF_NAME_PLACEHOLDER) == 0) {
-			AddGRFTextToList(&unknown_name->text, name);
+		GRFTextWrapper unknown_name = FindUnknownGRFName(c.grfid, c.md5sum, false);
+		if (unknown_name && strcmp(GetGRFStringFromGRFText(unknown_name), UNKNOWN_GRF_NAME_PLACEHOLDER) == 0) {
+			AddGRFTextToList(unknown_name, name);
 		}
 	}
 }
@@ -530,21 +526,13 @@ void ClientNetworkUDPSocketHandler::HandleIncomingNetworkGameInfoGRFConfig(GRFCo
 		/* Don't know the GRF, so mark game incompatible and the (possibly)
 		 * already resolved name for this GRF (another server has sent the
 		 * name of the GRF already */
-		config->name->Release();
 		config->name = FindUnknownGRFName(config->ident.grfid, config->ident.md5sum, true);
-		config->name->AddRef();
 		config->status = GCS_NOT_FOUND;
 	} else {
 		config->filename = f->filename;
-		config->name->Release();
 		config->name = f->name;
-		config->name->AddRef();
-		config->info->Release();
 		config->info = f->info;
-		config->info->AddRef();
-		config->url->Release();
 		config->url = f->url;
-		config->url->AddRef();
 	}
 	SetBit(config->flags, GCF_COPY);
 }
@@ -574,7 +562,7 @@ void NetworkUDPQueryMasterServer()
 
 	_udp_client_socket->SendPacket(&p, &out_addr, true);
 
-	DEBUG(net, 2, "[udp] master server queried at %s", out_addr.GetAddressAsString());
+	DEBUG(net, 2, "[udp] master server queried at %s", NetworkAddressDumper().GetAddressAsString(&out_addr));
 }
 
 /** Find all servers */
@@ -638,8 +626,8 @@ static void NetworkUDPAdvertiseThread()
 	if (_session_key == 0 && session_key_retries++ == 2) {
 		DEBUG(net, 0, "[udp] advertising to the master server is failing");
 		DEBUG(net, 0, "[udp]   we are not receiving the session key from the server");
-		DEBUG(net, 0, "[udp]   please allow udp packets from %s to you to be delivered", out_addr.GetAddressAsString(false));
-		DEBUG(net, 0, "[udp]   please allow udp packets from you to %s to be delivered", out_addr.GetAddressAsString(false));
+		DEBUG(net, 0, "[udp]   please allow udp packets from %s to you to be delivered", NetworkAddressDumper().GetAddressAsString(&out_addr, false));
+		DEBUG(net, 0, "[udp]   please allow udp packets from you to %s to be delivered", NetworkAddressDumper().GetAddressAsString(&out_addr, false));
 	}
 	if (_session_key != 0 && _network_advertise_retries == 0) {
 		DEBUG(net, 0, "[udp] advertising to the master server is failing");

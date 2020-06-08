@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -205,12 +203,18 @@ const char *FiosBrowseTo(const FiosItem *item)
  */
 static void FiosMakeFilename(char *buf, const char *path, const char *name, const char *ext, const char *last)
 {
-	const char *period;
+	if (path != nullptr) {
+		const char *buf_start = buf;
+		buf = strecpy(buf, path, last);
+		/* Remove trailing path separator, if present */
+		if (buf > buf_start && buf[-1] == PATHSEPCHAR) buf--;
+	}
 
 	/* Don't append the extension if it is already there */
-	period = strrchr(name, '.');
+	const char *period = strrchr(name, '.');
 	if (period != nullptr && strcasecmp(period, ext) == 0) ext = "";
-	seprintf(buf, last, "%s" PATHSEP "%s%s", path, name, ext);
+
+	seprintf(buf, last, PATHSEP "%s%s", name, ext);
 }
 
 /**
@@ -693,7 +697,7 @@ public:
 		if (f == nullptr) return false;
 
 		ScenarioIdentifier id;
-		int fret = fscanf(f, "%i", &id.scenid);
+		int fret = fscanf(f, "%u", &id.scenid);
 		FioFCloseFile(f);
 		if (fret != 1) return false;
 		strecpy(id.filename, filename, lastof(id.filename));

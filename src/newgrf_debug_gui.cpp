@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -844,7 +842,7 @@ GrfSpecFeature GetGrfSpecFeature(VehicleType type)
 
 /** Window used for aligning sprites. */
 struct SpriteAlignerWindow : Window {
-	typedef SmallPair<int16, int16> XyOffs;    ///< Pair for x and y offsets of the sprite before alignment. First value contains the x offset, second value y offset.
+	typedef std::pair<int16, int16> XyOffs;    ///< Pair for x and y offsets of the sprite before alignment. First value contains the x offset, second value y offset.
 
 	SpriteID current_sprite;                   ///< The currently shown sprite.
 	Scrollbar *vscroll;

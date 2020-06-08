@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -68,19 +66,21 @@ void TCPConnecter::Connect()
 {
 	for (auto iter = _tcp_connecters.begin(); iter < _tcp_connecters.end(); /* nothing */) {
 		TCPConnecter *cur = *iter;
-		if ((cur->connected || cur->aborted) && cur->killed) {
+		const bool connected = cur->connected.load();
+		const bool aborted = cur->aborted.load();
+		if ((connected || aborted) && cur->killed) {
 			iter = _tcp_connecters.erase(iter);
 			if (cur->sock != INVALID_SOCKET) closesocket(cur->sock);
 			delete cur;
 			continue;
 		}
-		if (cur->connected) {
+		if (connected) {
 			iter = _tcp_connecters.erase(iter);
 			cur->OnConnect(cur->sock);
 			delete cur;
 			continue;
 		}
-		if (cur->aborted) {
+		if (aborted) {
 			iter = _tcp_connecters.erase(iter);
 			cur->OnFailure();
 			delete cur;

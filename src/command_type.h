@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -281,6 +279,7 @@ enum Commands {
 	CMD_DECREASE_LOAN,                ///< decrease the loan from the bank
 
 	CMD_WANT_ENGINE_PREVIEW,          ///< confirm the preview of an engine
+	CMD_ENGINE_CTRL,                  ///< control availability of the engine for companies
 
 	CMD_SET_VEHICLE_UNIT_NUMBER,      ///< sets the unit number of a vehicle
 
@@ -290,6 +289,7 @@ enum Commands {
 	CMD_RENAME_PRESIDENT,             ///< change the president name
 	CMD_RENAME_STATION,               ///< rename a station
 	CMD_RENAME_DEPOT,                 ///< rename a depot
+	CMD_SET_STATION_CARGO_ALLOWED_SUPPLY, ///< set station cargo allowed supply
 
 	CMD_PLACE_SIGN,                   ///< place a sign
 	CMD_RENAME_SIGN,                  ///< rename a sign
@@ -307,6 +307,7 @@ enum Commands {
 	CMD_DO_TOWN_ACTION,               ///< do a action from the town detail window (like advertises or bribe)
 	CMD_TOWN_CARGO_GOAL,              ///< set the goal of a cargo for a town
 	CMD_TOWN_GROWTH_RATE,             ///< set the town growth rate
+	CMD_TOWN_RATING,                  ///< set rating of a company in a town
 	CMD_TOWN_SET_TEXT,                ///< set the custom text of a town
 	CMD_EXPAND_TOWN,                  ///< expand a town
 	CMD_DELETE_TOWN,                  ///< delete a town
@@ -316,7 +317,9 @@ enum Commands {
 	CMD_CLEAR_AREA,                   ///< clear an area
 
 	CMD_MONEY_CHEAT,                  ///< do the money cheat
+	CMD_MONEY_CHEAT_ADMIN,            ///< do the money cheat (admin mode)
 	CMD_CHANGE_BANK_BALANCE,          ///< change bank balance to charge costs or give money from a GS
+	CMD_CHEAT_SETTING,                ///< change a cheat setting
 	CMD_BUILD_CANAL,                  ///< build a canal
 
 	CMD_CREATE_SUBSIDY,               ///< create a new subsidy
@@ -338,6 +341,7 @@ enum Commands {
 	CMD_REMOVE_STORY_PAGE,            ///< remove a story page
 	CMD_REMOVE_STORY_PAGE_ELEMENT,    ///< remove a story page element
 	CMD_SCROLL_VIEWPORT,              ///< scroll main viewport of players
+	CMD_STORY_PAGE_BUTTON,            ///< selection via story page button
 
 	CMD_LEVEL_LAND,                   ///< level land
 
@@ -481,18 +485,19 @@ enum FlaggedCommands {
  * This enumeration defines flags for the _command_proc_table.
  */
 enum CommandFlags {
-	CMD_SERVER    = 0x001, ///< the command can only be initiated by the server
-	CMD_SPECTATOR = 0x002, ///< the command may be initiated by a spectator
-	CMD_OFFLINE   = 0x004, ///< the command cannot be executed in a multiplayer game; single-player only
-	CMD_AUTO      = 0x008, ///< set the DC_AUTO flag on this command
-	CMD_ALL_TILES = 0x010, ///< allow this command also on MP_VOID tiles
-	CMD_NO_TEST   = 0x020, ///< the command's output may differ between test and execute due to town rating changes etc.
-	CMD_NO_WATER  = 0x040, ///< set the DC_NO_WATER flag on this command
-	CMD_CLIENT_ID = 0x080, ///< set p2 with the ClientID of the sending client.
-	CMD_DEITY     = 0x100, ///< the command may be executed by COMPANY_DEITY
-	CMD_STR_CTRL  = 0x200, ///< the command's string may contain control strings
-	CMD_NO_EST    = 0x400, ///< the command is never estimated.
-	CMD_PROCEX    = 0x800, ///< the command proc function has extended parameters
+	CMD_SERVER    =  0x001, ///< the command can only be initiated by the server
+	CMD_SPECTATOR =  0x002, ///< the command may be initiated by a spectator
+	CMD_OFFLINE   =  0x004, ///< the command cannot be executed in a multiplayer game; single-player only
+	CMD_AUTO      =  0x008, ///< set the DC_AUTO flag on this command
+	CMD_ALL_TILES =  0x010, ///< allow this command also on MP_VOID tiles
+	CMD_NO_TEST   =  0x020, ///< the command's output may differ between test and execute due to town rating changes etc.
+	CMD_NO_WATER  =  0x040, ///< set the DC_NO_WATER flag on this command
+	CMD_CLIENT_ID =  0x080, ///< set p2 with the ClientID of the sending client.
+	CMD_DEITY     =  0x100, ///< the command may be executed by COMPANY_DEITY
+	CMD_STR_CTRL  =  0x200, ///< the command's string may contain control strings
+	CMD_NO_EST    =  0x400, ///< the command is never estimated.
+	CMD_PROCEX    =  0x800, ///< the command proc function has extended parameters
+	CMD_SERVER_NS = 0x1000, ///< the command can only be initiated by the server (this is not executed in spectator mode)
 };
 DECLARE_ENUM_AS_BIT_SET(CommandFlags)
 

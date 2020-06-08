@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -204,21 +202,9 @@ public:
 	static void InvalidateAllFrom(SourceType src_type, SourceID src);
 	static void InvalidateAllFrom(StationID sid);
 	static void AfterLoad();
+	static void PostVehiclesAfterLoad();
 	static bool ValidateDeferredCargoPayments();
 };
-
-/**
- * Iterate over all _valid_ cargo packets from the given start.
- * @param var   Variable used as "iterator".
- * @param start Cargo packet ID of the first packet to iterate over.
- */
-#define FOR_ALL_CARGOPACKETS_FROM(var, start) FOR_ALL_ITEMS_FROM(CargoPacket, cargopacket_index, var, start)
-
-/**
- * Iterate over all _valid_ cargo packets from the begin of the pool.
- * @param var   Variable used as "iterator".
- */
-#define FOR_ALL_CARGOPACKETS(var) FOR_ALL_CARGOPACKETS_FROM(var, 0)
 
 /**
  * Simple collection class for a list of cargo packets.
@@ -560,6 +546,8 @@ public:
 		return this->count;
 	}
 
+	uint AvailableViaCount(StationID next) const;
+
 	/**
 	 * Returns sum of cargo reserved for loading onto vehicles.
 	 * @return Cargo reserved for loading.
@@ -588,9 +576,14 @@ public:
 	uint Truncate(uint max_move = UINT_MAX, StationCargoAmountMap *cargo_per_source = nullptr);
 	uint Reroute(uint max_move, StationCargoList *dest, StationID avoid, StationID avoid2, const GoodsEntry *ge);
 
+	void AfterLoadIncreaseReservationCount(uint count)
+	{
+		this->reserved_count += count;
+	}
+
 	/**
-	 * Are two the two CargoPackets mergeable in the context of
-	 * a list of CargoPackets for a Vehicle?
+	 * Are the two CargoPackets mergeable in the context of
+	 * a list of CargoPackets for a Station?
 	 * @param cp1 First CargoPacket.
 	 * @param cp2 Second CargoPacket.
 	 * @return True if they are mergeable.

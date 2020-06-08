@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -59,6 +57,7 @@
 #include "../script/api/ai/ai_map.hpp.sq"
 #include "../script/api/ai/ai_marine.hpp.sq"
 #include "../script/api/ai/ai_order.hpp.sq"
+#include "../script/api/ai/ai_priorityqueue.hpp.sq"
 #include "../script/api/ai/ai_rail.hpp.sq"
 #include "../script/api/ai/ai_railtypelist.hpp.sq"
 #include "../script/api/ai/ai_road.hpp.sq"
@@ -146,6 +145,7 @@ void AIInstance::RegisterAPI()
 	SQAIEventSubsidyOffer_Register(this->engine);
 	SQAIEventSubsidyOfferExpired_Register(this->engine);
 	SQAIEventTownFounded_Register(this->engine);
+	SQAIEventVehicleAutoReplaced_Register(this->engine);
 	SQAIEventVehicleCrashed_Register(this->engine);
 	SQAIEventVehicleLost_Register(this->engine);
 	SQAIEventVehicleUnprofitable_Register(this->engine);
@@ -165,6 +165,7 @@ void AIInstance::RegisterAPI()
 	SQAIMap_Register(this->engine);
 	SQAIMarine_Register(this->engine);
 	SQAIOrder_Register(this->engine);
+	SQAIPriorityQueue_Register(this->engine);
 	SQAIRail_Register(this->engine);
 	SQAIRailTypeList_Register(this->engine);
 	SQAIRoad_Register(this->engine);

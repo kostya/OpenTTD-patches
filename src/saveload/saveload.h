@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -306,7 +304,9 @@ enum SaveLoadVersion : uint16 {
 
 	SLV_SCRIPT_MEMLIMIT,                    ///< 215  PR#7516 Limit on AI/GS memory consumption.
 	SLV_MULTITILE_DOCKS,                    ///< 216  PR#7380 Multiple docks per station.
-	SLV_KOSTYA_PATCH,
+	SLV_TRADING_AGE,                        ///< 217  PR#7780 Configurable company trading age.
+	SLV_ENDING_YEAR,                        ///< 218  PR#7747 v1.10 Configurable ending year.
+  SLV_KOSTYA_PATCH,
 
 	SL_MAX_VERSION,                         ///< Highest possible saveload version
 
@@ -321,6 +321,18 @@ enum SaveLoadVersion : uint16 {
 	SL_TRACE_RESTRICT_2000 = 2000,
 	SL_TRACE_RESTRICT_2001 = 2001,
 	SL_TRACE_RESTRICT_2002 = 2002,
+	SL_JOKER_1_19 = 278,
+	SL_JOKER_1_20 = 279,
+	SL_JOKER_1_21 = 280,
+	SL_JOKER_1_22 = 281,
+	SL_JOKER_1_23 = 282,
+	SL_JOKER_1_24 = 283,
+	SL_JOKER_1_25 = 284,
+	SL_JOKER_1_26 = 285,
+	SL_JOKER_1_27 = 286,
+	SL_CHILLPP_201 = 201,
+	SL_CHILLPP_232 = 232,
+	SL_CHILLPP_233 = 233,
 };
 
 /** Save or load result codes. */
@@ -454,8 +466,9 @@ enum VarTypes {
 	SLE_VAR_STRBQ = 11 << 4, ///< string enclosed in quotes (with pre-allocated buffer)
 	SLE_VAR_STR   = 12 << 4, ///< string pointer
 	SLE_VAR_STRQ  = 13 << 4, ///< string pointer enclosed in quotes
-	SLE_VAR_NAME  = 14 << 4, ///< old custom name to be converted to a char pointer
-	/* 1 more possible memory-primitives */
+	SLE_VAR_NAME  = 14 << 4, ///< old custom name to be converted to a std::string
+	SLE_VAR_CNAME = 15 << 4, ///< old custom name to be converted to a char pointer
+	/* 0 more possible memory-primitives */
 
 	/* Shortcut values */
 	SLE_VAR_CHAR = SLE_VAR_I8,
@@ -479,6 +492,7 @@ enum VarTypes {
 	SLE_STRING       = SLE_FILE_STRING   | SLE_VAR_STR,
 	SLE_STRINGQUOTE  = SLE_FILE_STRING   | SLE_VAR_STRQ,
 	SLE_NAME         = SLE_FILE_STRINGID | SLE_VAR_NAME,
+	SLE_CNAME        = SLE_FILE_STRINGID | SLE_VAR_CNAME,
 
 	/* Shortcut values */
 	SLE_UINT  = SLE_UINT32,
@@ -495,7 +509,8 @@ enum VarTypes {
 	SLF_NO_NETWORK_SYNC = 1 << 10, ///< do not synchronize over network (but it is saved if SLF_NOT_IN_SAVE is not set)
 	SLF_ALLOW_CONTROL   = 1 << 11, ///< allow control codes in the strings
 	SLF_ALLOW_NEWLINE   = 1 << 12, ///< allow new lines in the strings
-	/* 3 more possible flags */
+	SLF_HEX             = 1 << 13, ///< print numbers as hex in the config file (only useful for unsigned)
+	/* 2 more possible flags */
 };
 
 typedef uint32 VarType;
@@ -608,7 +623,7 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLE_CONDSTR(base, variable, type, length, from, to) SLE_CONDSTR_X(base, variable, type, length, from, to, SlXvFeatureTest())
 
 /**
- * Storage of a std::string in some savegame versions.
+ * Storage of a \c std::string in some savegame versions.
  * @param base     Name of the class or struct containing the string.
  * @param variable Name of the variable in the class or struct referenced by \a base.
  * @param type     Storage of the data in memory and in the savegame.
@@ -616,8 +631,8 @@ typedef SaveLoad SaveLoadGlobVarList;
  * @param to       Last savegame version that has the string.
  * @param extver   SlXvFeatureTest to test (along with from and to) which savegames have the field
  */
-#define SLE_CONDSTDSTR_X(base, variable, type, from, to, extver) SLE_GENERAL_X(SL_STDSTR, base, variable, type, 0, from, to, extver)
-#define SLE_CONDSTDSTR(base, variable, type, from, to) SLE_CONDSTDSTR_X(base, variable, type, from, to, SlXvFeatureTest())
+#define SLE_CONDSSSTR_X(base, variable, type, from, to, extver) SLE_GENERAL_X(SL_STDSTR, base, variable, type, 0, from, to, extver)
+#define SLE_CONDSSTR(base, variable, type, from, to) SLE_GENERAL(SL_STDSTR, base, variable, type, 0, from, to)
 
 /**
  * Storage of a list in some savegame versions.
@@ -714,12 +729,12 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLE_STR(base, variable, type, length) SLE_CONDSTR(base, variable, type, length, SL_MIN_VERSION, SL_MAX_VERSION)
 
 /**
- * Storage of a std::string in every savegame version.
+ * Storage of a \c std::string in every savegame version.
  * @param base     Name of the class or struct containing the string.
  * @param variable Name of the variable in the class or struct referenced by \a base.
  * @param type     Storage of the data in memory and in the savegame.
  */
-#define SLE_STDSTR(base, variable, type) SLE_CONDSTDSTR(base, variable, type, SL_MIN_VERSION, SL_MAX_VERSION)
+#define SLE_SSTR(base, variable, type) SLE_CONDSSTR(base, variable, type, SL_MIN_VERSION, SL_MAX_VERSION)
 
 /**
  * Storage of a list in every savegame version.
@@ -830,6 +845,15 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLEG_CONDSTR(variable, type, length, from, to) SLEG_CONDSTR_X(variable, type, length, from, to, SlXvFeatureTest())
 
 /**
+ * Storage of a global \c std::string in some savegame versions.
+ * @param variable Name of the global variable.
+ * @param type     Storage of the data in memory and in the savegame.
+ * @param from     First savegame version that has the string.
+ * @param to       Last savegame version that has the string.
+ */
+#define SLEG_CONDSSTR(variable, type, from, to) SLEG_GENERAL(SL_STDSTR, variable, type, 0, from, to)
+
+/**
  * Storage of a global list in some savegame versions.
  * @param variable Name of the global variable.
  * @param type     Storage of the data in memory and in the savegame.
@@ -891,6 +915,13 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLEG_STR(variable, type) SLEG_CONDSTR(variable, type, sizeof(variable), SL_MIN_VERSION, SL_MAX_VERSION)
 
 /**
+ * Storage of a global \c std::string in every savegame version.
+ * @param variable Name of the global variable.
+ * @param type     Storage of the data in memory and in the savegame.
+ */
+#define SLEG_SSTR(variable, type) SLEG_CONDSSTR(variable, type, SL_MIN_VERSION, SL_MAX_VERSION)
+
+/**
  * Storage of a global list in every savegame version.
  * @param variable Name of the global variable.
  * @param type     Storage of the data in memory and in the savegame.
@@ -934,6 +965,19 @@ static inline bool IsSavegameVersionBefore(SaveLoadVersion major, byte minor = 0
 	extern SaveLoadVersion _sl_version;
 	extern byte            _sl_minor_version;
 	return _sl_version < major || (minor > 0 && _sl_version == major && _sl_minor_version < minor);
+}
+
+/**
+ * Checks whether the savegame is below or at \a major. This should be used to repair data from existing
+ * savegames which is no longer corrupted in new savegames, but for which otherwise no savegame
+ * bump is required.
+ * @param major Major number of the version to check against.
+ * @return Savegame version is at most the specified version.
+ */
+static inline bool IsSavegameVersionUntil(SaveLoadVersion major)
+{
+	extern SaveLoadVersion _sl_version;
+	return _sl_version <= major;
 }
 
 /**

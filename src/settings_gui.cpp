@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -43,6 +41,7 @@
 
 #include "safeguards.h"
 
+extern void FlushDeparturesWindowTextCaches();
 
 static const StringID _driveside_dropdown[] = {
 	STR_GAME_OPTIONS_ROAD_VEHICLES_DROPDOWN_LEFT,
@@ -154,7 +153,7 @@ struct BaseSetTextfileWindow : public TextfileWindow {
 	{
 		if (widget == WID_TF_CAPTION) {
 			SetDParam(0, content_type);
-			SetDParamStr(1, this->baseset->name);
+			SetDParamStr(1, this->baseset->name.c_str());
 		}
 	}
 };
@@ -337,10 +336,10 @@ struct GameOptionsWindow : Window {
 			case WID_GO_RESOLUTION_DROPDOWN: SetDParam(0, GetCurRes() == _resolutions.size() ? STR_GAME_OPTIONS_RESOLUTION_OTHER : SPECSTR_RESOLUTION_START + GetCurRes()); break;
 			case WID_GO_GUI_ZOOM_DROPDOWN:   SetDParam(0, _gui_zoom_dropdown[ZOOM_LVL_OUT_4X - _gui_zoom]); break;
 			case WID_GO_FONT_ZOOM_DROPDOWN:  SetDParam(0, _font_zoom_dropdown[ZOOM_LVL_OUT_4X - _font_zoom]); break;
-			case WID_GO_BASE_GRF_DROPDOWN:   SetDParamStr(0, BaseGraphics::GetUsedSet()->name); break;
+			case WID_GO_BASE_GRF_DROPDOWN:   SetDParamStr(0, BaseGraphics::GetUsedSet()->name.c_str()); break;
 			case WID_GO_BASE_GRF_STATUS:     SetDParam(0, BaseGraphics::GetUsedSet()->GetNumInvalid()); break;
-			case WID_GO_BASE_SFX_DROPDOWN:   SetDParamStr(0, BaseSounds::GetUsedSet()->name); break;
-			case WID_GO_BASE_MUSIC_DROPDOWN: SetDParamStr(0, BaseMusic::GetUsedSet()->name); break;
+			case WID_GO_BASE_SFX_DROPDOWN:   SetDParamStr(0, BaseSounds::GetUsedSet()->name.c_str()); break;
+			case WID_GO_BASE_MUSIC_DROPDOWN: SetDParamStr(0, BaseMusic::GetUsedSet()->name.c_str()); break;
 			case WID_GO_BASE_MUSIC_STATUS:   SetDParam(0, BaseMusic::GetUsedSet()->GetNumInvalid()); break;
 		}
 	}
@@ -483,10 +482,9 @@ struct GameOptionsWindow : Window {
 	void SetMediaSet(int index)
 	{
 		if (_game_mode == GM_MENU) {
-			const char *name = T::GetSet(index)->name;
+			auto name = T::GetSet(index)->name;
 
-			free(T::ini_set);
-			T::ini_set = stredup(name);
+			T::ini_set = name;
 
 			T::SetSet(name);
 			this->reload = true;
@@ -531,6 +529,7 @@ struct GameOptionsWindow : Window {
 				ClearAllCachedNames();
 				UpdateAllVirtCoords();
 				ReInitAllWindows();
+				FlushDeparturesWindowTextCaches();
 				break;
 
 			case WID_GO_RESOLUTION_DROPDOWN: // Change resolution
@@ -546,6 +545,7 @@ struct GameOptionsWindow : Window {
 				UpdateAllVirtCoords();
 				FixTitleGameZoom();
 				ReInitAllWindows();
+				FlushDeparturesWindowTextCaches();
 				break;
 
 			case WID_GO_FONT_ZOOM_DROPDOWN:
@@ -556,6 +556,7 @@ struct GameOptionsWindow : Window {
 				UpdateFontHeightCache();
 				LoadStringWidthTable();
 				UpdateAllVirtCoords();
+				FlushDeparturesWindowTextCaches();
 				break;
 
 			case WID_GO_BASE_GRF_DROPDOWN:
@@ -1701,6 +1702,7 @@ static SettingsContainer &GetSettingsTree()
 			interface->Add(new SettingEntry("gui.prefer_teamchat"));
 			interface->Add(new SettingEntry("gui.advanced_vehicle_list"));
 			interface->Add(new SettingEntry("gui.expenses_layout"));
+			interface->Add(new SettingEntry("gui.show_newgrf_name"));
 			interface->Add(new SettingEntry("gui.show_train_length_in_details"));
 			interface->Add(new SettingEntry("gui.show_train_weight_ratios_in_details"));
 			interface->Add(new SettingEntry("gui.show_vehicle_group_in_details"));
@@ -1775,7 +1777,6 @@ static SettingsContainer &GetSettingsTree()
 			accounting->Add(new SettingEntry("difficulty.max_loan"));
 			accounting->Add(new SettingEntry("difficulty.subsidy_multiplier"));
 			accounting->Add(new SettingEntry("economy.feeder_payment_share"));
-			accounting->Add(new SettingEntry("economy.feeder_payment_src_station"));
 			accounting->Add(new SettingEntry("economy.infrastructure_maintenance"));
 			accounting->Add(new SettingEntry("difficulty.vehicle_costs"));
 			accounting->Add(new SettingEntry("difficulty.construction_cost"));
@@ -1844,6 +1845,8 @@ static SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("construction.rail_custom_bridge_heads"));
 			limitations->Add(new SettingEntry("construction.allow_grf_objects_under_bridges"));
 			limitations->Add(new SettingEntry("construction.allow_stations_under_bridges"));
+			limitations->Add(new SettingEntry("construction.allow_road_stops_under_bridges"));
+			limitations->Add(new SettingEntry("construction.allow_docks_under_bridges"));
 			limitations->Add(new SettingEntry("construction.purchase_land_permitted"));
 		}
 
@@ -1876,6 +1879,7 @@ static SettingsContainer &GetSettingsTree()
 			genworld->Add(new SettingEntry("economy.town_min_distance"));
 			genworld->Add(new SettingEntry("difficulty.industry_density"));
 			genworld->Add(new SettingEntry("gui.pause_on_newgame"));
+			genworld->Add(new SettingEntry("game_creation.ending_year"));
 		}
 
 		SettingsPage *environment = main->Add(new SettingsPage(STR_CONFIG_SETTING_ENVIRONMENT));
@@ -1945,6 +1949,7 @@ static SettingsContainer &GetSettingsTree()
 			environment->Add(new SettingEntry("station.modified_catchment"));
 			environment->Add(new SettingEntry("station.catchment_increase"));
 			environment->Add(new SettingEntry("station.cargo_class_rating_wait_time"));
+			environment->Add(new SettingEntry("station.station_size_rating_cargo_amount"));
 		}
 
 		SettingsPage *ai = main->Add(new SettingsPage(STR_CONFIG_SETTING_AI));
@@ -1977,6 +1982,8 @@ static SettingsContainer &GetSettingsTree()
 
 			ai->Add(new SettingEntry("economy.give_money"));
 			ai->Add(new SettingEntry("economy.allow_shares"));
+			ai->Add(new SettingEntry("economy.min_years_for_shares"));
+			ai->Add(new SettingEntry("difficulty.money_cheat_in_multiplayer"));
 		}
 
 		main->Init();

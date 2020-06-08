@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -61,6 +59,8 @@ extern int _debug_random_level;
 
 extern const char *_savegame_DBGL_data;
 extern std::string _loadgame_DBGL_data;
+extern bool _save_DBGC_data;
+extern std::string _loadgame_DBGC_data;
 
 void CDECL debug(const char *dbg, const char *format, ...) WARN_FORMAT(2, 3);
 

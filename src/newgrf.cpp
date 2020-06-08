@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -68,6 +66,11 @@
 
 /** List of all loaded GRF files */
 static std::vector<GRFFile *> _grf_files;
+
+const std::vector<GRFFile *> &GetAllGRFFiles()
+{
+	return _grf_files;
+}
 
 /** Miscellaneous GRF features, set by Action 0x0D, parameter 0x9E */
 byte _misc_grf_features = 0;
@@ -388,7 +391,7 @@ void CDECL _intl_grfmsg(int severity, const char *str, ...)
 	vseprintf(buf, lastof(buf), str, va);
 	va_end(va);
 
-	DEBUG(grf, severity, "[%s:%d] %s", _cur.grfconfig->filename, _cur.nfo_line, buf);
+	DEBUG(grf, severity, "[%s:%d] %s", _cur.grfconfig->GetDisplayPath(), _cur.nfo_line, buf);
 }
 
 /**
@@ -2452,8 +2455,6 @@ static ChangeInfoResult TownHouseChangeInfo(uint hid, int numinfo, int prop, con
 				if (!CargoSpec::Get(housespec->accepts_cargo[2])->IsValid()) {
 					housespec->cargo_acceptance[2] = 0;
 				}
-
-				_loaded_newgrf_features.has_newhouses = true;
 				break;
 			}
 
@@ -3442,13 +3443,13 @@ static ChangeInfoResult IgnoreIndustryProperty(int prop, ByteReader *buf)
 /**
  * Validate the industry layout; e.g. to prevent duplicate tiles.
  * @param layout The layout to check.
- * @param size The size of the layout.
  * @return True if the layout is deemed valid.
  */
-static bool ValidateIndustryLayout(const IndustryTileTable *layout, int size)
+static bool ValidateIndustryLayout(const IndustryTileLayout &layout)
 {
-	for (int i = 0; i < size - 1; i++) {
-		for (int j = i + 1; j < size; j++) {
+	const size_t size = layout.size();
+	for (size_t i = 0; i < size - 1; i++) {
+		for (size_t j = i + 1; j < size; j++) {
 			if (layout[i].ti.x == layout[j].ti.x &&
 					layout[i].ti.y == layout[j].ti.y) {
 				return false;
@@ -3456,20 +3457,6 @@ static bool ValidateIndustryLayout(const IndustryTileTable *layout, int size)
 		}
 	}
 	return true;
-}
-
-/** Clean the tile table of the IndustrySpec if it's needed. */
-static void CleanIndustryTileTable(IndustrySpec *ind)
-{
-	if (HasBit(ind->cleanup_flag, CLEAN_TILELAYOUT) && ind->table != nullptr) {
-		for (int j = 0; j < ind->num_table; j++) {
-			/* remove the individual layouts */
-			free(ind->table[j]);
-		}
-		/* remove the layouts pointers */
-		free(ind->table);
-		ind->table = nullptr;
-	}
 }
 
 /**
@@ -3523,10 +3510,10 @@ static ChangeInfoResult IndustriesChangeInfo(uint indid, int numinfo, int prop, 
 				 * Only need to do it once. If ever it is called again, it should not
 				 * do anything */
 				if (*indspec == nullptr) {
-					*indspec = CallocT<IndustrySpec>(1);
+					*indspec = new IndustrySpec;
 					indsp = *indspec;
 
-					memcpy(indsp, &_origin_industry_specs[subs_id], sizeof(_industry_specs[subs_id]));
+					*indsp = _origin_industry_specs[subs_id];
 					indsp->enabled = true;
 					indsp->grf_prop.local_id = indid + i;
 					indsp->grf_prop.subst_id = subs_id;
@@ -3552,112 +3539,101 @@ static ChangeInfoResult IndustriesChangeInfo(uint indid, int numinfo, int prop, 
 			}
 
 			case 0x0A: { // Set industry layout(s)
-				byte new_num_layouts = buf->ReadByte(); // Number of layaouts
-				/* We read the total size in bytes, but we can't rely on the
-				 * newgrf to provide a sane value. First assume the value is
-				 * sane but later on we make sure we enlarge the array if the
-				 * newgrf contains more data. Each tile uses either 3 or 5
-				 * bytes, so to play it safe we assume 3. */
-				uint32 def_num_tiles = buf->ReadDWord() / 3 + 1;
-				IndustryTileTable **tile_table = CallocT<IndustryTileTable*>(new_num_layouts); // Table with tiles to compose an industry
-				IndustryTileTable *itt = CallocT<IndustryTileTable>(def_num_tiles); // Temporary array to read the tile layouts from the GRF
-				uint size;
-				const IndustryTileTable *copy_from;
+				byte new_num_layouts = buf->ReadByte();
+				uint32 definition_size = buf->ReadDWord();
+				uint32 bytes_read = 0;
+				std::vector<IndustryTileLayout> new_layouts;
+				IndustryTileLayout layout;
 
-				try {
-					for (byte j = 0; j < new_num_layouts; j++) {
-						for (uint k = 0;; k++) {
-							if (k >= def_num_tiles) {
-								grfmsg(3, "IndustriesChangeInfo: Incorrect size for industry tile layout definition for industry %u.", indid);
-								/* Size reported by newgrf was not big enough so enlarge the array. */
-								def_num_tiles *= 2;
-								itt = ReallocT<IndustryTileTable>(itt, def_num_tiles);
-							}
+				for (byte j = 0; j < new_num_layouts; j++) {
+					layout.clear();
 
-							itt[k].ti.x = buf->ReadByte(); // Offsets from northermost tile
-
-							if (itt[k].ti.x == 0xFE && k == 0) {
-								/* This means we have to borrow the layout from an old industry */
-								IndustryType type = buf->ReadByte();  // industry holding required layout
-								byte laynbr = buf->ReadByte();        // layout number to borrow
-
-								copy_from = _origin_industry_specs[type].table[laynbr];
-								for (size = 1;; size++) {
-									if (copy_from[size - 1].ti.x == -0x80 && copy_from[size - 1].ti.y == 0) break;
-								}
-								break;
-							}
-
-							itt[k].ti.y = buf->ReadByte(); // Or table definition finalisation
-
-							if (itt[k].ti.x == 0 && itt[k].ti.y == 0x80) {
-								/*  Not the same terminator.  The one we are using is rather
-								 x = -80, y = x .  So, adjust it. */
-								itt[k].ti.x = -0x80;
-								itt[k].ti.y =  0;
-								itt[k].gfx  =  0;
-
-								size = k + 1;
-								copy_from = itt;
-								break;
-							}
-
-							itt[k].gfx = buf->ReadByte();
-
-							if (itt[k].gfx == 0xFE) {
-								/* Use a new tile from this GRF */
-								int local_tile_id = buf->ReadWord();
-
-								/* Read the ID from the _industile_mngr. */
-								int tempid = _industile_mngr.GetID(local_tile_id, _cur.grffile->grfid);
-
-								if (tempid == INVALID_INDUSTRYTILE) {
-									grfmsg(2, "IndustriesChangeInfo: Attempt to use industry tile %u with industry id %u, not yet defined. Ignoring.", local_tile_id, indid);
-								} else {
-									/* Declared as been valid, can be used */
-									itt[k].gfx = tempid;
-								}
-							} else if (itt[k].gfx == 0xFF) {
-								itt[k].ti.x = (int8)GB(itt[k].ti.x, 0, 8);
-								itt[k].ti.y = (int8)GB(itt[k].ti.y, 0, 8);
-
-								/* When there were only 256x256 maps, TileIndex was a uint16 and
-								 * itt[k].ti was just a TileIndexDiff that was added to it.
-								 * As such negative "x" values were shifted into the "y" position.
-								 *   x = -1, y = 1 -> x = 255, y = 0
-								 * Since GRF version 8 the position is interpreted as pair of independent int8.
-								 * For GRF version < 8 we need to emulate the old shifting behaviour.
-								 */
-								if (_cur.grffile->grf_version < 8 && itt[k].ti.x < 0) itt[k].ti.y += 1;
-							}
+					for (uint k = 0;; k++) {
+						if (bytes_read >= definition_size) {
+							grfmsg(3, "IndustriesChangeInfo: Incorrect size for industry tile layout definition for industry %u.", indid);
+							/* Avoid warning twice */
+							definition_size = UINT32_MAX;
 						}
 
-						if (!ValidateIndustryLayout(copy_from, size)) {
-							/* The industry layout was not valid, so skip this one. */
-							grfmsg(1, "IndustriesChangeInfo: Invalid industry layout for industry id %u. Ignoring", indid);
-							new_num_layouts--;
-							j--;
-						} else {
-							tile_table[j] = CallocT<IndustryTileTable>(size);
-							memcpy(tile_table[j], copy_from, sizeof(*copy_from) * size);
+						layout.push_back(IndustryTileLayoutTile{});
+						IndustryTileLayoutTile &it = layout.back();
+
+						it.ti.x = buf->ReadByte(); // Offsets from northermost tile
+						++bytes_read;
+
+						if (it.ti.x == 0xFE && k == 0) {
+							/* This means we have to borrow the layout from an old industry */
+							IndustryType type = buf->ReadByte();
+							byte laynbr = buf->ReadByte();
+							bytes_read += 2;
+
+							if (type >= lengthof(_origin_industry_specs)) {
+								grfmsg(1, "IndustriesChangeInfo: Invalid original industry number for layout import, industry %u", indid);
+								DisableGrf(STR_NEWGRF_ERROR_INVALID_ID);
+								return CIR_DISABLED;
+							}
+							if (laynbr >= _origin_industry_specs[type].layouts.size()) {
+								grfmsg(1, "IndustriesChangeInfo: Invalid original industry layout index for layout import, industry %u", indid);
+								DisableGrf(STR_NEWGRF_ERROR_INVALID_ID);
+								return CIR_DISABLED;
+							}
+							layout = _origin_industry_specs[type].layouts[laynbr];
+							break;
+						}
+
+						it.ti.y = buf->ReadByte(); // Or table definition finalisation
+						++bytes_read;
+
+						if (it.ti.x == 0 && it.ti.y == 0x80) {
+							/* Terminator, remove and finish up */
+							layout.pop_back();
+							break;
+						}
+
+						it.gfx = buf->ReadByte();
+						++bytes_read;
+
+						if (it.gfx == 0xFE) {
+							/* Use a new tile from this GRF */
+							int local_tile_id = buf->ReadWord();
+							bytes_read += 2;
+
+							/* Read the ID from the _industile_mngr. */
+							int tempid = _industile_mngr.GetID(local_tile_id, _cur.grffile->grfid);
+
+							if (tempid == INVALID_INDUSTRYTILE) {
+								grfmsg(2, "IndustriesChangeInfo: Attempt to use industry tile %u with industry id %u, not yet defined. Ignoring.", local_tile_id, indid);
+							} else {
+								/* Declared as been valid, can be used */
+								it.gfx = tempid;
+							}
+						} else if (it.gfx == 0xFF) {
+							it.ti.x = (int8)GB(it.ti.x, 0, 8);
+							it.ti.y = (int8)GB(it.ti.y, 0, 8);
+
+							/* When there were only 256x256 maps, TileIndex was a uint16 and
+								* it.ti was just a TileIndexDiff that was added to it.
+								* As such negative "x" values were shifted into the "y" position.
+								*   x = -1, y = 1 -> x = 255, y = 0
+								* Since GRF version 8 the position is interpreted as pair of independent int8.
+								* For GRF version < 8 we need to emulate the old shifting behaviour.
+								*/
+							if (_cur.grffile->grf_version < 8 && it.ti.x < 0) it.ti.y += 1;
 						}
 					}
-				} catch (...) {
-					for (int i = 0; i < new_num_layouts; i++) {
-						free(tile_table[i]);
+
+					if (!ValidateIndustryLayout(layout)) {
+						/* The industry layout was not valid, so skip this one. */
+						grfmsg(1, "IndustriesChangeInfo: Invalid industry layout for industry id %u. Ignoring", indid);
+						new_num_layouts--;
+						j--;
+					} else {
+						new_layouts.push_back(layout);
 					}
-					free(tile_table);
-					free(itt);
-					throw;
 				}
 
-				/* Clean the tile table if it was already set by a previous prop A. */
-				CleanIndustryTileTable(indsp);
 				/* Install final layout construction in the industry spec */
-				indsp->num_table = new_num_layouts;
-				indsp->table = tile_table;
-				SetBit(indsp->cleanup_flag, CLEAN_TILELAYOUT);
-				free(itt);
+				indsp->layouts = new_layouts;
 				break;
 			}
 
@@ -4654,8 +4630,6 @@ static ChangeInfoResult RoadTypeReserveInfo(uint id, int numinfo, int prop, cons
 				break;
 
 			case 0x10: // Road Type flags
-			case 0x12: // Station graphic
-			case 0x15: // Acceleration model
 			case 0x16: // Map colour
 			case 0x1A: // Sort order
 				buf->ReadByte();
@@ -5136,6 +5110,7 @@ static void NewSpriteGroup(ByteReader *buf)
 
 			assert(DeterministicSpriteGroup::CanAllocateItem());
 			DeterministicSpriteGroup *group = new DeterministicSpriteGroup();
+			group->nfo_line = _cur.nfo_line;
 			act_group = group;
 			group->var_scope = HasBit(type, 1) ? VSG_SCOPE_PARENT : VSG_SCOPE_SELF;
 
@@ -5252,6 +5227,7 @@ static void NewSpriteGroup(ByteReader *buf)
 		{
 			assert(RandomizedSpriteGroup::CanAllocateItem());
 			RandomizedSpriteGroup *group = new RandomizedSpriteGroup();
+			group->nfo_line = _cur.nfo_line;
 			act_group = group;
 			group->var_scope = HasBit(type, 1) ? VSG_SCOPE_PARENT : VSG_SCOPE_SELF;
 
@@ -5300,6 +5276,7 @@ static void NewSpriteGroup(ByteReader *buf)
 
 					assert(RealSpriteGroup::CanAllocateItem());
 					RealSpriteGroup *group = new RealSpriteGroup();
+					group->nfo_line = _cur.nfo_line;
 					act_group = group;
 
 					group->num_loaded  = num_loaded;
@@ -5333,6 +5310,7 @@ static void NewSpriteGroup(ByteReader *buf)
 
 					assert(TileLayoutSpriteGroup::CanAllocateItem());
 					TileLayoutSpriteGroup *group = new TileLayoutSpriteGroup();
+					group->nfo_line = _cur.nfo_line;
 					act_group = group;
 
 					/* On error, bail out immediately. Temporary GRF data was already freed */
@@ -5348,6 +5326,7 @@ static void NewSpriteGroup(ByteReader *buf)
 
 					assert(IndustryProductionSpriteGroup::CanAllocateItem());
 					IndustryProductionSpriteGroup *group = new IndustryProductionSpriteGroup();
+					group->nfo_line = _cur.nfo_line;
 					act_group = group;
 					group->version = type;
 					if (type == 0) {
@@ -5374,7 +5353,7 @@ static void NewSpriteGroup(ByteReader *buf)
 						group->num_input = buf->ReadByte();
 						if (group->num_input > lengthof(group->subtract_input)) {
 							GRFError *error = DisableGrf(STR_NEWGRF_ERROR_INDPROD_CALLBACK);
-							error->data = stredup("too many inputs (max 16)");
+							error->data = "too many inputs (max 16)";
 							return;
 						}
 						for (uint i = 0; i < group->num_input; i++) {
@@ -5387,7 +5366,7 @@ static void NewSpriteGroup(ByteReader *buf)
 								group->version = 0xFF;
 							} else if (std::find(group->cargo_input, group->cargo_input + i, cargo) != group->cargo_input + i) {
 								GRFError *error = DisableGrf(STR_NEWGRF_ERROR_INDPROD_CALLBACK);
-								error->data = stredup("duplicate input cargo");
+								error->data = "duplicate input cargo";
 								return;
 							}
 							group->cargo_input[i] = cargo;
@@ -5396,7 +5375,7 @@ static void NewSpriteGroup(ByteReader *buf)
 						group->num_output = buf->ReadByte();
 						if (group->num_output > lengthof(group->add_output)) {
 							GRFError *error = DisableGrf(STR_NEWGRF_ERROR_INDPROD_CALLBACK);
-							error->data = stredup("too many outputs (max 16)");
+							error->data = "too many outputs (max 16)";
 							return;
 						}
 						for (uint i = 0; i < group->num_output; i++) {
@@ -5407,7 +5386,7 @@ static void NewSpriteGroup(ByteReader *buf)
 								group->version = 0xFF;
 							} else if (std::find(group->cargo_output, group->cargo_output + i, cargo) != group->cargo_output + i) {
 								GRFError *error = DisableGrf(STR_NEWGRF_ERROR_INDPROD_CALLBACK);
-								error->data = stredup("duplicate output cargo");
+								error->data = "duplicate output cargo";
 								return;
 							}
 							group->cargo_output[i] = cargo;
@@ -6655,7 +6634,7 @@ static void CfgApply(ByteReader *buf)
 static void DisableStaticNewGRFInfluencingNonStaticNewGRFs(GRFConfig *c)
 {
 	GRFError *error = DisableGrf(STR_NEWGRF_ERROR_STATIC_GRF_CAUSES_DESYNC, c);
-	error->data = stredup(_cur.grfconfig->GetName());
+	error->data = _cur.grfconfig->GetName();
 }
 
 /* Action 0x07
@@ -6770,15 +6749,26 @@ static void SkipIf(ByteReader *buf)
 				break;
 			case 0x0E: result = GetRailTypeByLabel(BSWAP32(cond_val)) != INVALID_RAILTYPE;
 				break;
-			case 0x0F: result = GetRoadTypeByLabel(BSWAP32(cond_val)) == INVALID_ROADTYPE;
+			case 0x0F: {
+				RoadType rt = GetRoadTypeByLabel(BSWAP32(cond_val));
+				result = rt == INVALID_ROADTYPE || !RoadTypeIsRoad(rt);
 				break;
-			case 0x10: result = GetRoadTypeByLabel(BSWAP32(cond_val)) != INVALID_ROADTYPE;
+			}
+			case 0x10: {
+				RoadType rt = GetRoadTypeByLabel(BSWAP32(cond_val));
+				result = rt != INVALID_ROADTYPE && RoadTypeIsRoad(rt);
 				break;
-			case 0x11: result = GetRoadTypeByLabel(BSWAP32(cond_val)) == INVALID_ROADTYPE;
+			}
+			case 0x11: {
+				RoadType rt = GetRoadTypeByLabel(BSWAP32(cond_val));
+				result = rt == INVALID_ROADTYPE || !RoadTypeIsTram(rt);
 				break;
-			case 0x12: result = GetRoadTypeByLabel(BSWAP32(cond_val)) != INVALID_ROADTYPE;
+			}
+			case 0x12: {
+				RoadType rt = GetRoadTypeByLabel(BSWAP32(cond_val));
+				result = rt != INVALID_ROADTYPE && RoadTypeIsTram(rt);
 				break;
-
+			}
 			default: grfmsg(1, "SkipIf: Unsupported condition type %02X. Ignoring", condtype); return;
 		}
 	}
@@ -6841,17 +6831,17 @@ static void ScanInfo(ByteReader *buf)
 
 	if (grf_version < 2 || grf_version > 8) {
 		SetBit(_cur.grfconfig->flags, GCF_INVALID);
-		DEBUG(grf, 0, "%s: NewGRF \"%s\" (GRFID %08X) uses GRF version %d, which is incompatible with this version of OpenTTD.", _cur.grfconfig->filename, name, BSWAP32(grfid), grf_version);
+		DEBUG(grf, 0, "%s: NewGRF \"%s\" (GRFID %08X) uses GRF version %d, which is incompatible with this version of OpenTTD.", _cur.grfconfig->GetDisplayPath(), name, BSWAP32(grfid), grf_version);
 	}
 
 	/* GRF IDs starting with 0xFF are reserved for internal TTDPatch use */
 	if (GB(grfid, 0, 8) == 0xFF) SetBit(_cur.grfconfig->flags, GCF_SYSTEM);
 
-	AddGRFTextToList(&_cur.grfconfig->name->text, 0x7F, grfid, false, name);
+	AddGRFTextToList(_cur.grfconfig->name, 0x7F, grfid, false, name);
 
 	if (buf->HasData()) {
 		const char *info = buf->ReadString();
-		AddGRFTextToList(&_cur.grfconfig->info->text, 0x7F, grfid, true, info);
+		AddGRFTextToList(_cur.grfconfig->info, 0x7F, grfid, true, info);
 	}
 
 	/* GLS_INFOSCAN only looks for the action 8, so we can skip the rest of the file */
@@ -7022,10 +7012,10 @@ static void GRFLoadError(ByteReader *buf)
 		if (buf->HasData()) {
 			const char *message = buf->ReadString();
 
-			error->custom_message = TranslateTTDPatchCodes(_cur.grffile->grfid, lang, true, message, nullptr, SCC_RAW_STRING_POINTER);
+			error->custom_message = TranslateTTDPatchCodes(_cur.grffile->grfid, lang, true, message, SCC_RAW_STRING_POINTER);
 		} else {
 			grfmsg(7, "GRFLoadError: No custom message supplied.");
-			error->custom_message = stredup("");
+			error->custom_message.clear();
 		}
 	} else {
 		error->message = msgstr[message_id];
@@ -7037,7 +7027,7 @@ static void GRFLoadError(ByteReader *buf)
 		error->data = TranslateTTDPatchCodes(_cur.grffile->grfid, lang, true, data);
 	} else {
 		grfmsg(7, "GRFLoadError: No message data supplied.");
-		error->data = stredup("");
+		error->data.clear();
 	}
 
 	/* Only two parameter numbers can be used in the string. */
@@ -7546,7 +7536,7 @@ static void GRFInhibit(ByteReader *buf)
 
 		/* Unset activation flag */
 		if (file != nullptr && file != _cur.grfconfig) {
-			grfmsg(2, "GRFInhibit: Deactivating file '%s'", file->filename);
+			grfmsg(2, "GRFInhibit: Deactivating file '%s'", file->GetDisplayPath());
 			GRFError *error = DisableGrf(STR_NEWGRF_ERROR_FORCEFULLY_DISABLED, file);
 			error->data = stredup(_cur.grfconfig->GetName());
 		}
@@ -7583,9 +7573,8 @@ static void FeatureTownName(ByteReader *buf)
 
 			const char *name = buf->ReadString();
 
-			char *lang_name = TranslateTTDPatchCodes(grfid, lang, false, name);
-			grfmsg(6, "FeatureTownName: lang 0x%X -> '%s'", lang, lang_name);
-			free(lang_name);
+			std::string lang_name = TranslateTTDPatchCodes(grfid, lang, false, name);
+			grfmsg(6, "FeatureTownName: lang 0x%X -> '%s'", lang, lang_name.c_str());
 
 			townname->name[nb_gen] = AddGRFString(grfid, id, lang, new_scheme, false, name, STR_UNDEFINED);
 
@@ -7627,7 +7616,7 @@ static void FeatureTownName(ByteReader *buf)
 				townname->partlist[id][i].parts[j].data.id = ref_id;
 			} else {
 				const char *text = buf->ReadString();
-				townname->partlist[id][i].parts[j].data.text = TranslateTTDPatchCodes(grfid, 0, false, text);
+				townname->partlist[id][i].parts[j].data.text = stredup(TranslateTTDPatchCodes(grfid, 0, false, text).c_str());
 				grfmsg(6, "FeatureTownName: part %d, text %d, '%s' (with probability %d)", i, j, townname->partlist[id][i].parts[j].data.text, prob);
 			}
 			townname->partlist[id][i].parts[j].prob = prob;
@@ -7899,7 +7888,7 @@ static void TranslateGRFStrings(ByteReader *buf)
 
 		char tmp[256];
 		GetString(tmp, STR_NEWGRF_ERROR_AFTER_TRANSLATED_FILE, lastof(tmp));
-		error->data = stredup(tmp);
+		error->data = tmp;
 
 		return;
 	}
@@ -7933,21 +7922,21 @@ static void TranslateGRFStrings(ByteReader *buf)
 /** Callback function for 'INFO'->'NAME' to add a translation to the newgrf name. */
 static bool ChangeGRFName(byte langid, const char *str)
 {
-	AddGRFTextToList(&_cur.grfconfig->name->text, langid, _cur.grfconfig->ident.grfid, false, str);
+	AddGRFTextToList(_cur.grfconfig->name, langid, _cur.grfconfig->ident.grfid, false, str);
 	return true;
 }
 
 /** Callback function for 'INFO'->'DESC' to add a translation to the newgrf description. */
 static bool ChangeGRFDescription(byte langid, const char *str)
 {
-	AddGRFTextToList(&_cur.grfconfig->info->text, langid, _cur.grfconfig->ident.grfid, true, str);
+	AddGRFTextToList(_cur.grfconfig->info, langid, _cur.grfconfig->ident.grfid, true, str);
 	return true;
 }
 
 /** Callback function for 'INFO'->'URL_' to set the newgrf url. */
 static bool ChangeGRFURL(byte langid, const char *str)
 {
-	AddGRFTextToList(&_cur.grfconfig->url->text, langid, _cur.grfconfig->ident.grfid, false, str);
+	AddGRFTextToList(_cur.grfconfig->url, langid, _cur.grfconfig->ident.grfid, false, str);
 	return true;
 }
 
@@ -8049,14 +8038,14 @@ static GRFParameterInfo *_cur_parameter; ///< The parameter which info is curren
 /** Callback function for 'INFO'->'PARAM'->param_num->'NAME' to set the name of a parameter. */
 static bool ChangeGRFParamName(byte langid, const char *str)
 {
-	AddGRFTextToList(&_cur_parameter->name, langid, _cur.grfconfig->ident.grfid, false, str);
+	AddGRFTextToList(_cur_parameter->name, langid, _cur.grfconfig->ident.grfid, false, str);
 	return true;
 }
 
 /** Callback function for 'INFO'->'PARAM'->param_num->'DESC' to set the description of a parameter. */
 static bool ChangeGRFParamDescription(byte langid, const char *str)
 {
-	AddGRFTextToList(&_cur_parameter->desc, langid, _cur.grfconfig->ident.grfid, true, str);
+	AddGRFTextToList(_cur_parameter->desc, langid, _cur.grfconfig->ident.grfid, true, str);
 	return true;
 }
 
@@ -8087,8 +8076,14 @@ static bool ChangeGRFParamLimits(size_t len, ByteReader *buf)
 		grfmsg(2, "StaticGRFInfo: expected 8 bytes for 'INFO'->'PARA'->'LIMI' but got " PRINTF_SIZE ", ignoring this field", len);
 		buf->Skip(len);
 	} else {
-		_cur_parameter->min_value = buf->ReadDWord();
-		_cur_parameter->max_value = buf->ReadDWord();
+		uint32 min_value = buf->ReadDWord();
+		uint32 max_value = buf->ReadDWord();
+		if (min_value <= max_value) {
+			_cur_parameter->min_value = min_value;
+			_cur_parameter->max_value = max_value;
+		} else {
+			grfmsg(2, "StaticGRFInfo: 'INFO'->'PARA'->'LIMI' values are incoherent, ignoring this field");
+		}
 	}
 	return true;
 }
@@ -8251,12 +8246,12 @@ static bool ChangeGRFParamValueNames(ByteReader *buf)
 		byte langid = buf->ReadByte();
 		const char *name_string = buf->ReadString();
 
-		SmallPair<uint32, GRFText *> *val_name = _cur_parameter->value_names.Find(id);
+		std::pair<uint32, GRFTextList> *val_name = _cur_parameter->value_names.Find(id);
 		if (val_name != _cur_parameter->value_names.End()) {
-			AddGRFTextToList(&val_name->second, langid, _cur.grfconfig->ident.grfid, false, name_string);
+			AddGRFTextToList(val_name->second, langid, _cur.grfconfig->ident.grfid, false, name_string);
 		} else {
-			GRFText *list = nullptr;
-			AddGRFTextToList(&list, langid, _cur.grfconfig->ident.grfid, false, name_string);
+			GRFTextList list;
+			AddGRFTextToList(list, langid, _cur.grfconfig->ident.grfid, false, name_string);
 			_cur_parameter->value_names.Insert(id, list);
 		}
 
@@ -8472,7 +8467,7 @@ static const GRFPropertyMapDefinition _grf_action0_remappable_properties[] = {
 
 /** Action14 Action5 remappable type list */
 static const Action5TypeRemapDefinition _grf_action5_remappable_types[] = {
-	Action5TypeRemapDefinition("programmable_signals", A5BLOCK_ALLOW_OFFSET, SPR_PROGSIGNAL_BASE, 1, 32, "Programmable signal graphics"),
+	Action5TypeRemapDefinition("programmable_signals", A5BLOCK_ALLOW_OFFSET, SPR_PROGSIGNAL_BASE, 1, 32, "Programmable pre-signal graphics"),
 	Action5TypeRemapDefinition(),
 };
 
@@ -9059,17 +9054,7 @@ static void ResetCustomIndustries()
 		if (industryspec != nullptr) {
 			for (uint i = 0; i < NUM_INDUSTRYTYPES_PER_GRF; i++) {
 				IndustrySpec *ind = industryspec[i];
-				if (ind == nullptr) continue;
-
-				/* We need to remove the sounds array */
-				if (HasBit(ind->cleanup_flag, CLEAN_RANDOMSOUNDS)) {
-					free(ind->random_sounds);
-				}
-
-				/* We need to remove the tiles layouts */
-				CleanIndustryTileTable(ind);
-
-				free(ind);
+				delete ind;
 			}
 
 			free(industryspec);
@@ -9147,8 +9132,7 @@ void ResetNewGRFData()
 	_gted = CallocT<GRFTempEngineData>(Engine::GetPoolSize());
 
 	/* Fill rail type label temporary data for default trains */
-	Engine *e;
-	FOR_ALL_ENGINES_OF_TYPE(e, VEH_TRAIN) {
+	for (const Engine *e : Engine::IterateType(VEH_TRAIN)) {
 		_gted[e->index].railtypelabel = GetRailTypeInfo(e->u.rail.railtype)->label;
 	}
 
@@ -9208,8 +9192,6 @@ void ResetNewGRFData()
 
 	_loaded_newgrf_features.has_2CC           = false;
 	_loaded_newgrf_features.used_liveries     = 1 << LS_DEFAULT;
-	_loaded_newgrf_features.has_newhouses     = false;
-	_loaded_newgrf_features.has_newindustries = false;
 	_loaded_newgrf_features.shore             = SHORE_REPLACE_NONE;
 	_loaded_newgrf_features.tram              = TRAMWAY_REPLACE_DEPOT_NONE;
 
@@ -9293,18 +9275,18 @@ GRFFile::GRFFile(const GRFConfig *config)
 	}
 
 	/* Initialise rail type map with default rail types */
-	memset(this->railtype_map, INVALID_RAILTYPE, sizeof(this->railtype_map));
+	std::fill(std::begin(this->railtype_map), std::end(this->railtype_map), INVALID_RAILTYPE);
 	this->railtype_map[0] = RAILTYPE_RAIL;
 	this->railtype_map[1] = RAILTYPE_ELECTRIC;
 	this->railtype_map[2] = RAILTYPE_MONO;
 	this->railtype_map[3] = RAILTYPE_MAGLEV;
 
 	/* Initialise road type map with default road types */
-	memset(this->roadtype_map, INVALID_ROADTYPE, sizeof(this->roadtype_map));
+	std::fill(std::begin(this->roadtype_map), std::end(this->roadtype_map), INVALID_ROADTYPE);
 	this->roadtype_map[0] = ROADTYPE_ROAD;
 
 	/* Initialise tram type map with default tram types */
-	memset(this->tramtype_map, INVALID_ROADTYPE, sizeof(this->tramtype_map));
+	std::fill(std::begin(this->tramtype_map), std::end(this->tramtype_map), INVALID_ROADTYPE);
 	this->tramtype_map[0] = ROADTYPE_TRAM;
 
 	/* Copy the initial parameter list
@@ -9364,9 +9346,7 @@ static const CargoLabel * const _default_refitmasks[] = {
  */
 static void CalculateRefitMasks()
 {
-	Engine *e;
-
-	FOR_ALL_ENGINES(e) {
+	for (Engine *e : Engine::Iterate()) {
 		EngineID engine = e->index;
 		EngineInfo *ei = &e->info;
 		bool only_defaultcargo; ///< Set if the vehicle shall carry only the default cargo
@@ -9480,9 +9460,7 @@ static void FinaliseCanals()
 /** Check for invalid engines */
 static void FinaliseEngineArray()
 {
-	Engine *e;
-
-	FOR_ALL_ENGINES(e) {
+	for (Engine *e : Engine::Iterate()) {
 		if (e->GetGRF() == nullptr) {
 			const EngineIDMapping &eid = _engine_mngr[e->index];
 			if (eid.grfid != INVALID_GRFID || eid.internal_id != eid.substitute_id) {
@@ -9733,7 +9711,6 @@ static void FinaliseIndustriesArray()
 					}
 
 					_industry_mngr.SetEntitySpec(indsp);
-					_loaded_newgrf_features.has_newindustries = true;
 				}
 			}
 		}
@@ -9953,13 +9930,15 @@ void LoadNewGRFFile(GRFConfig *config, uint file_index, GrfLoadingStage stage, S
 		return;
 	}
 
-	FioOpenFile(file_index, filename, subdir);
+	free(config->full_filename);
+	config->full_filename = nullptr;
+	FioOpenFile(file_index, filename, subdir, &(config->full_filename));
 	_cur.file_index = file_index; // XXX
 	_palette_remap_grf[_cur.file_index] = (config->palette & GRFP_USE_MASK);
 
 	_cur.grfconfig = config;
 
-	DEBUG(grf, 2, "LoadNewGRFFile: Reading NewGRF-file '%s'", filename);
+	DEBUG(grf, 2, "LoadNewGRFFile: Reading NewGRF-file '%s'", config->GetDisplayPath());
 
 	_cur.grf_container_ver = GetGRFContainerVersion();
 	if (_cur.grf_container_ver == 0) {
@@ -10276,8 +10255,7 @@ static void AfterLoadGRFs()
 	InitRailTypes();
 	InitRoadTypes();
 
-	Engine *e;
-	FOR_ALL_ENGINES_OF_TYPE(e, VEH_ROAD) {
+	for (Engine *e : Engine::IterateType(VEH_ROAD)) {
 		if (_gted[e->index].rv_max_speed != 0) {
 			/* Set RV maximum speed from the mph/0.8 unit value */
 			e->u.road.max_speed = _gted[e->index].rv_max_speed * 4;
@@ -10309,7 +10287,7 @@ static void AfterLoadGRFs()
 		e->info.climates = 0;
 	}
 
-	FOR_ALL_ENGINES_OF_TYPE(e, VEH_TRAIN) {
+	for (Engine *e : Engine::IterateType(VEH_TRAIN)) {
 		RailType railtype = GetRailTypeByLabel(_gted[e->index].railtypelabel);
 		if (railtype == INVALID_RAILTYPE) {
 			/* Rail type is not available, so disable this engine */

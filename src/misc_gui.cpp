@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -29,6 +27,7 @@
 #include "tunnelbridge_map.h"
 #include "viewport_type.h"
 #include "guitimer_func.h"
+#include "rev.h"
 
 #include "widgets/misc_widget.h"
 
@@ -429,7 +428,7 @@ static const NWidgetPart _nested_about_widgets[] = {
 		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
 		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE1), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
 		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE2), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
-		NWidget(WWT_LABEL, COLOUR_GREY), SetDataTip(STR_ABOUT_COPYRIGHT_OPENTTD, STR_NULL),
+		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_COPYRIGHT), SetDataTip(STR_ABOUT_COPYRIGHT_OPENTTD, STR_NULL),
 	EndContainer(),
 };
 
@@ -451,6 +450,7 @@ static const char * const _credits[] = {
 	"  Ulf Hermann (fonsinchen) - Cargo Distribution (since 1.3)",
 	"  Christoph Elsenhans (frosch) - General coding (since 0.6)",
 	"  Lo\xC3\xAF""c Guilloux (glx) - General / Windows Expert (since 0.4.5)",
+	"  Charles Pigott (LordAro) - General / Correctness police (since 1.9)",
 	"  Michael Lutz (michi_cc) - Path based signals (since 0.7)",
 	"  Niels Martin Hansen (nielsm) - Music system, general coding (since 1.9)",
 	"  Owen Rudge (orudge) - Forum host, OS/2 port (since 0.1)",
@@ -530,6 +530,7 @@ struct AboutWindow : public Window {
 		if (widget == WID_A_WEBSITE) SetDParamStr(0, "Main project website: http://www.openttd.org");
 		if (widget == WID_A_WEBSITE1) SetDParamStr(0, "Patchpack thread: https://www.tt-forums.net/viewtopic.php?f=33&t=73469");
 		if (widget == WID_A_WEBSITE2) SetDParamStr(0, "Patchpack Github: https://github.com/JGRennison/OpenTTD-patches");
+		if (widget == WID_A_COPYRIGHT) SetDParamStr(0, _openttd_revision_year);
 	}
 
 	void UpdateWidgetSize(int widget, Dimension *size, const Dimension &padding, Dimension *fill, Dimension *resize) override

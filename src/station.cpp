@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -46,8 +44,7 @@ StationKdtree _station_kdtree(Kdtree_StationXYFunc);
 void RebuildStationKdtree()
 {
 	std::vector<StationID> stids;
-	BaseStation *st;
-	FOR_ALL_STATIONS(st) {
+	for (const Station *st : Station::Iterate()) {
 		stids.push_back(st->index);
 	}
 	_station_kdtree.Build(stids.begin(), stids.end());
@@ -56,7 +53,6 @@ void RebuildStationKdtree()
 
 BaseStation::~BaseStation()
 {
-	free(this->name);
 	free(this->speclist);
 
 	if (CleaningPool()) return;
@@ -67,7 +63,10 @@ BaseStation::~BaseStation()
 	DeleteWindowById(WC_AIRCRAFT_LIST, VehicleListIdentifier(VL_STATION_LIST, VEH_AIRCRAFT, this->owner, this->index).Pack());
 	DeleteWindowById(WC_DEPARTURES_BOARD, this->index);
 
-	this->sign.MarkDirty();
+	if (HasBit(_display_opt, Station::IsExpected(this) ? DO_SHOW_STATION_NAMES : DO_SHOW_WAYPOINT_NAMES) &&
+			!(_local_company != this->owner && this->owner != OWNER_NONE && !HasBit(_display_opt, DO_SHOW_COMPETITOR_SIGNS))) {
+		this->sign.MarkDirty(ZOOM_LVL_DRAW_SPR);
+	}
 }
 
 Station::Station(TileIndex tile) :
@@ -102,8 +101,7 @@ Station::~Station()
 		this->loading_vehicles.front()->LeaveStation();
 	}
 
-	Aircraft *a;
-	FOR_ALL_AIRCRAFT(a) {
+	for (Aircraft *a : Aircraft::Iterate()) {
 		if (!a->IsNormalAircraft()) continue;
 		if (a->targetairport == this->index) a->targetairport = INVALID_STATION;
 	}
@@ -127,8 +125,7 @@ Station::~Station()
 		}
 	}
 
-	Vehicle *v;
-	FOR_ALL_VEHICLES(v) {
+	for (Vehicle *v : Vehicle::Iterate()) {
 		/* Forget about this station if this station is removed */
 		if (v->last_station_visited == this->index) {
 			v->last_station_visited = INVALID_STATION;
@@ -169,7 +166,7 @@ Station::~Station()
 	CargoPacket::InvalidateAllFrom(this->index);
 
 	_station_kdtree.Remove(this->index);
-	if (_viewport_sign_kdtree_valid) _viewport_sign_kdtree.Remove(ViewportSignKdtreeItem::MakeStation(this->index, this->viewport_sign_kdtree_pt));
+	if (_viewport_sign_kdtree_valid && this->sign.kdtree_valid) _viewport_sign_kdtree.Remove(ViewportSignKdtreeItem::MakeStation(this->index));
 }
 
 
@@ -380,12 +377,11 @@ bool Station::IsWithinRangeOfDockingTile(TileIndex tile, uint max_distance) cons
 /**
  * Add nearby industry to station's industries_near list if it accepts cargo.
  * @param ind Industry
- * @param st Station
  */
-static void AddIndustryToDeliver(Industry *ind, Station *st)
+void Station::AddIndustryToDeliver(Industry *ind)
 {
 	/* Don't check further if this industry is already in the list */
-	if (st->industries_near.find(ind) != st->industries_near.end()) return;
+	if (this->industries_near.find(ind) != this->industries_near.end()) return;
 
 	/* Include only industries that can accept cargo */
 	uint cargo_index;
@@ -394,7 +390,7 @@ static void AddIndustryToDeliver(Industry *ind, Station *st)
 	}
 	if (cargo_index >= lengthof(ind->accepts_cargo)) return;
 
-	st->industries_near.insert(ind);
+	this->industries_near.insert(ind);
 }
 
 /**
@@ -402,10 +398,8 @@ static void AddIndustryToDeliver(Industry *ind, Station *st)
  */
 void Station::RemoveFromAllNearbyLists()
 {
-	Town *t;
-	FOR_ALL_TOWNS(t) { t->stations_near.erase(this); }
-	Industry *i;
-	FOR_ALL_INDUSTRIES(i) { i->stations_near.erase(this); }
+	for (Town *t : Town::Iterate()) { t->stations_near.erase(this); }
+	for (Industry *i : Industry::Iterate()) { i->stations_near.erase(this); }
 }
 
 /**
@@ -453,6 +447,14 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 		this->industry->stations_near.clear();
 		this->industry->stations_near.insert(this);
 		this->industries_near.insert(this->industry);
+
+		/* Loop finding all station tiles */
+		TileArea ta(TileXY(this->rect.left, this->rect.top), TileXY(this->rect.right, this->rect.bottom));
+		this->station_tiles = 0;
+		TILE_AREA_LOOP(tile, ta) {
+			if (!IsTileType(tile, MP_STATION) || GetStationIndex(tile) != this->index) continue;
+			this->station_tiles++;
+		}
 		return;
 	}
 
@@ -460,8 +462,11 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 
 	/* Loop finding all station tiles */
 	TileArea ta(TileXY(this->rect.left, this->rect.top), TileXY(this->rect.right, this->rect.bottom));
+	this->station_tiles = 0;
 	TILE_AREA_LOOP(tile, ta) {
 		if (!IsTileType(tile, MP_STATION) || GetStationIndex(tile) != this->index) continue;
+
+		this->station_tiles++;
 
 		uint r = GetTileCatchmentRadius(tile, this);
 		if (r == CA_NONE) continue;
@@ -487,7 +492,7 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 			i->stations_near.insert(this);
 
 			/* Add if we can deliver to this industry as well */
-			AddIndustryToDeliver(i, this);
+			this->AddIndustryToDeliver(i);
 		}
 	}
 }
@@ -498,12 +503,9 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
  */
 /* static */ void Station::RecomputeCatchmentForAll()
 {
-	Town *t;
-	FOR_ALL_TOWNS(t) { t->stations_near.clear(); }
-	Industry *i;
-	FOR_ALL_INDUSTRIES(i) { i->stations_near.clear(); }
-	Station *st;
-	FOR_ALL_STATIONS(st) { st->RecomputeCatchment(true); }
+	for (Town *t : Town::Iterate()) { t->stations_near.clear(); }
+	for (Industry *i : Industry::Iterate()) { i->stations_near.clear(); }
+	for (Station *st : Station::Iterate()) { st->RecomputeCatchment(true); }
 }
 
 /************************************************************************/
@@ -682,8 +684,7 @@ Money AirportMaintenanceCost(Owner owner)
 {
 	Money total_cost = 0;
 
-	const Station *st;
-	FOR_ALL_STATIONS(st) {
+	for (const Station *st : Station::Iterate()) {
 		if (st->owner == owner && (st->facilities & FACIL_AIRPORT)) {
 			total_cost += _price[PR_INFRASTRUCTURE_AIRPORT] * st->airport.GetSpec()->maintenance_cost;
 		}

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -13,11 +11,11 @@
 #include "string_func.h"
 #include <string>
 
-static inline void str_validate(std::string &str, StringValidationSettings settings = SVS_REPLACE_WITH_QUESTION_MARK)
+static inline void str_validate_inplace(std::string &str, StringValidationSettings settings = SVS_REPLACE_WITH_QUESTION_MARK)
 {
 	if (str.empty()) return;
 	char *buf = const_cast<char *>(str.c_str());
-	str.resize(str_validate_intl(buf, buf + str.size(), settings) - buf);
+	str.resize(str_validate(buf, buf + str.size(), settings) - buf);
 }
 
 template <typename F>

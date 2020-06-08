@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -194,8 +192,7 @@ SpriteID TileZoneCheckUnservedBuildingsEvaluation(TileIndex tile, Owner owner)
 	}
 
 	CargoArray dat;
-
-	memset(&dat, 0, sizeof(dat));
+	dat.Clear();
 	AddAcceptedCargo(tile, dat, nullptr);
 	if (dat[CT_MAIL] + dat[CT_PASSENGERS] == 0) {
 		// nothing is accepted, so now test if cargo is produced

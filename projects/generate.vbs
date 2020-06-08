@@ -1,7 +1,5 @@
 Option Explicit
 
-' $Id$
-'
 ' This file is part of OpenTTD.
 ' OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
 ' OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -174,6 +172,7 @@ Sub load_main_data(filename, ByRef vcxproj, ByRef filters, ByRef files)
 					line = Replace(line, "#if ", "")
 					If deep = skip And ( _
 						line = "SDL" Or _
+						line = "SDL2" Or _
 						line = "PNG" Or _
 						line = "WIN32" Or _
 						line = "MSVC" Or _
@@ -323,21 +322,26 @@ Sub load_baseset_data(dir, langdir, ByRef vcxproj, ByRef files, ByRef langs)
 End Sub
 
 Sub generate(data, dest, data2)
-	Dim srcfile, destfile, line
+	Dim srcfile, destfile, line, regexp
 	WScript.Echo "Generating " & FSO.GetFileName(dest) & "..."
 	Set srcfile = FSO.OpenTextFile(dest & ".in", 1, 0, 0)
 	Set destfile = FSO.CreateTextFile(dest, -1, 0)
 
 	If Not IsNull(data2) Then
 		' Everything above the !!FILTERS!! marker
+		Set regexp = New RegExp
+		regexp.Pattern = "!!FILTERS!!"
+		regexp.Global = True
+
 		line = srcfile.ReadLine()
-		While line <> "!!FILTERS!!"
+		While Not regexp.Test(line)
 			If len(line) > 0 Then destfile.WriteLine(line)
 			line = srcfile.ReadLine()
 		Wend
 
 		' Our generated content
-		destfile.WriteLine(data2)
+		line = regexp.Replace(line, data2)
+		destfile.WriteLine(line)
 	End If
 
 	' Everything above the !!FILES!! marker

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -21,7 +19,7 @@ static FVideoDriver_Null iFVideoDriver_Null;
 
 extern bool _exit_game;
 
-const char *VideoDriver_Null::Start(const char * const *parm)
+const char *VideoDriver_Null::Start(const StringList &parm)
 {
 #ifdef _MSC_VER
 	/* Disable the MSVC assertion message box. */
@@ -50,11 +48,13 @@ void VideoDriver_Null::MainLoop()
 	if (this->until_exit) {
 		while (!_exit_game) {
 			GameLoop();
+			GameLoopPaletteAnimations();
 			UpdateWindows();
 		}
 	} else {
 		for (int i = 0; i < this->ticks; i++) {
 			GameLoop();
+			GameLoopPaletteAnimations();
 			UpdateWindows();
 		}
 	}

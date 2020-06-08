@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -24,6 +22,7 @@
  */
 
 #include "stdafx.h"
+#include <limits>
 #include "currency.h"
 #include "screenshot.h"
 #include "network/network.h"
@@ -89,6 +88,7 @@ GameSettings _settings_game;     ///< Game settings of a running game or the sce
 GameSettings _settings_newgame;  ///< Game settings for new games (updated from the intro screen).
 VehicleDefaultSettings _old_vds; ///< Used for loading default vehicles settings from old savegames
 char *_config_file; ///< Configuration file of OpenTTD
+std::string _config_file_text;
 
 typedef std::list<ErrorMessageData> ErrorList;
 static ErrorList _settings_error_list; ///< Errors while loading minimal settings.
@@ -178,7 +178,8 @@ static size_t LookupManyOfMany(const char *many, const char *str)
  * @param maxitems the maximum number of elements the integerlist-array has
  * @return returns the number of items found, or -1 on an error
  */
-static int ParseIntList(const char *p, int *items, int maxitems)
+template<typename T>
+static int ParseIntList(const char *p, T *items, int maxitems)
 {
 	int n = 0; // number of items read so far
 	bool comma = false; // do we accept comma?
@@ -198,9 +199,9 @@ static int ParseIntList(const char *p, int *items, int maxitems)
 			default: {
 				if (n == maxitems) return -1; // we don't accept that many numbers
 				char *end;
-				long v = strtol(p, &end, 0);
+				unsigned long v = strtoul(p, &end, 0);
 				if (p == end) return -1; // invalid character (not a number)
-				if (sizeof(int) < sizeof(long)) v = ClampToI32(v);
+				if (sizeof(T) < sizeof(v)) v = Clamp<unsigned long>(v, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
 				items[n++] = v;
 				p = end; // first non-number
 				comma = true; // we accept comma now
@@ -226,7 +227,7 @@ static int ParseIntList(const char *p, int *items, int maxitems)
  */
 static bool LoadIntList(const char *str, void *array, int nelems, VarType type)
 {
-	int items[64];
+	unsigned long items[64];
 	int i, nitems;
 
 	if (str == nullptr) {
@@ -275,7 +276,7 @@ static void MakeIntList(char *buf, const char *last, const void *array, int nele
 	const byte *p = (const byte *)array;
 
 	for (i = 0; i != nelems; i++) {
-		switch (type) {
+		switch (GetVarMemType(type)) {
 			case SLE_VAR_BL:
 			case SLE_VAR_I8:  v = *(const   int8 *)p; p += 1; break;
 			case SLE_VAR_U8:  v = *(const  uint8 *)p; p += 1; break;
@@ -285,7 +286,13 @@ static void MakeIntList(char *buf, const char *last, const void *array, int nele
 			case SLE_VAR_U32: v = *(const uint32 *)p; p += 4; break;
 			default: NOT_REACHED();
 		}
-		buf += seprintf(buf, last, (i == 0) ? "%d" : ",%d", v);
+		if (IsSignedVarMemType(type)) {
+			buf += seprintf(buf, last, (i == 0) ? "%d" : ",%d", v);
+		} else if (type & SLF_HEX) {
+			buf += seprintf(buf, last, (i == 0) ? "0x%X" : ",0x%X", v);
+		} else {
+			buf += seprintf(buf, last, (i == 0) ? "%u" : ",%u", v);
+		}
 	}
 }
 
@@ -415,6 +422,7 @@ static const void *StringToVal(const SettingDescBase *desc, const char *orig_str
 			return desc->def;
 		}
 
+		case SDT_STDSTRING:
 		case SDT_STRING: return orig_str;
 		case SDT_INTLIST: return str;
 		default: break;
@@ -520,45 +528,42 @@ static void IniLoadSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 {
 	IniGroup *group;
 	IniGroup *group_def = ini->GetGroup(grpname);
-	IniItem *item;
-	const void *p;
-	void *ptr;
-	const char *s;
 
 	for (; sd->save.cmd != SL_END; sd++) {
 		const SettingDescBase *sdb = &sd->desc;
 		const SaveLoad        *sld = &sd->save;
 
 		if (!SlIsObjectCurrentlyValid(sld->version_from, sld->version_to, sld->ext_feature_test)) continue;
+		IniItem *item;
 		if (sdb->flags & SGF_NO_NEWGAME) {
 			item = nullptr;
 		} else {
 			/* For settings.xx.yy load the settings from [xx] yy = ? */
-			s = strchr(sdb->name, '.');
-			if (s != nullptr) {
-				group = ini->GetGroup(sdb->name, s - sdb->name);
-				s++;
+			std::string s{ sdb->name };
+			auto sc = s.find('.');
+			if (sc != std::string::npos) {
+				group = ini->GetGroup(s.substr(0, sc));
+				s = s.substr(sc + 1);
 			} else {
-				s = sdb->name;
 				group = group_def;
 			}
 
 			item = group->GetItem(s, false);
 			if (item == nullptr && group != group_def) {
-				/* For settings.xx.yy load the settings from [settingss] yy = ? in case the previous
+				/* For settings.xx.yy load the settings from [settings] yy = ? in case the previous
 				 * did not exist (e.g. loading old config files with a [settings] section */
 				item = group_def->GetItem(s, false);
 			}
 			if (item == nullptr) {
 				/* For settings.xx.zz.yy load the settings from [zz] yy = ? in case the previous
 				 * did not exist (e.g. loading old config files with a [yapf] section */
-				const char *sc = strchr(s, '.');
-				if (sc != nullptr) item = ini->GetGroup(s, sc - s)->GetItem(sc + 1, false);
+				sc = s.find('.');
+				if (sc != std::string::npos) item = ini->GetGroup(s.substr(0, sc))->GetItem(s.substr(sc + 1), false);
 			}
 		}
 
-		p = (item == nullptr) ? sdb->def : StringToVal(sdb, item->value);
-		ptr = GetVariableAddress(object, sld);
+		const void *p = (item == nullptr) ? sdb->def : StringToVal(sdb, item->value.has_value() ? item->value->c_str() : nullptr);
+		void *ptr = GetVariableAddress(object, sld);
 
 		switch (sdb->cmd) {
 			case SDT_BOOLX: // All four are various types of (integer) numbers
@@ -585,6 +590,22 @@ static void IniLoadSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 
 					default: NOT_REACHED();
 				}
+				break;
+
+			case SDT_STDSTRING:
+				switch (GetVarMemType(sld->conv)) {
+					case SLE_VAR_STR:
+					case SLE_VAR_STRQ:
+						if (p != nullptr) {
+							reinterpret_cast<std::string *>(ptr)->assign((const char *)p);
+						} else {
+							reinterpret_cast<std::string *>(ptr)->clear();
+						}
+						break;
+
+					default: NOT_REACHED();
+				}
+
 				break;
 
 			case SDT_INTLIST: {
@@ -622,7 +643,6 @@ static void IniSaveSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 	IniGroup *group_def = nullptr, *group;
 	IniItem *item;
 	char buf[512];
-	const char *s;
 	void *ptr;
 
 	for (; sd->save.cmd != SL_END; sd++) {
@@ -636,22 +656,22 @@ static void IniSaveSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 		if (sdb->flags & SGF_NO_NEWGAME) continue;
 
 		/* XXX - wtf is this?? (group override?) */
-		s = strchr(sdb->name, '.');
-		if (s != nullptr) {
-			group = ini->GetGroup(sdb->name, s - sdb->name);
-			s++;
+		std::string s{ sdb->name };
+		auto sc = s.find('.');
+		if (sc != std::string::npos) {
+			group = ini->GetGroup(s.substr(0, sc));
+			s = s.substr(sc + 1);
 		} else {
 			if (group_def == nullptr) group_def = ini->GetGroup(grpname);
-			s = sdb->name;
 			group = group_def;
 		}
 
 		item = group->GetItem(s, true);
 		ptr = GetVariableAddress(object, sld);
 
-		if (item->value != nullptr) {
+		if (item->value.has_value()) {
 			/* check if the value is the same as the old value */
-			const void *p = StringToVal(sdb, item->value);
+			const void *p = StringToVal(sdb, item->value->c_str());
 
 			/* The main type of a variable/setting is in bytes 8-15
 			 * The subtype (what kind of numbers do we have there) is in 0-7 */
@@ -698,7 +718,7 @@ static void IniSaveSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 
 				switch (sdb->cmd) {
 					case SDT_BOOLX:      strecpy(buf, (i != 0) ? "true" : "false", lastof(buf)); break;
-					case SDT_NUMX:       seprintf(buf, lastof(buf), IsSignedVarMemType(sld->conv) ? "%d" : "%u", i); break;
+					case SDT_NUMX:       seprintf(buf, lastof(buf), IsSignedVarMemType(sld->conv) ? "%d" : (sld->conv & SLF_HEX) ? "%X" : "%u", i); break;
 					case SDT_ONEOFMANY:  MakeOneOfMany(buf, lastof(buf), sdb->many, i); break;
 					case SDT_MANYOFMANY: MakeManyOfMany(buf, lastof(buf), sdb->many, i); break;
 					default: NOT_REACHED();
@@ -725,16 +745,31 @@ static void IniSaveSettings(IniFile *ini, const SettingDesc *sd, const char *grp
 				}
 				break;
 
+			case SDT_STDSTRING:
+				switch (GetVarMemType(sld->conv)) {
+					case SLE_VAR_STR: strecpy(buf, reinterpret_cast<std::string *>(ptr)->c_str(), lastof(buf)); break;
+
+					case SLE_VAR_STRQ:
+						if (reinterpret_cast<std::string *>(ptr)->empty()) {
+							buf[0] = '\0';
+						} else {
+							seprintf(buf, lastof(buf), "\"%s\"", reinterpret_cast<std::string *>(ptr)->c_str());
+						}
+						break;
+
+					default: NOT_REACHED();
+				}
+				break;
+
 			case SDT_INTLIST:
-				MakeIntList(buf, lastof(buf), ptr, sld->length, GetVarMemType(sld->conv));
+				MakeIntList(buf, lastof(buf), ptr, sld->length, sld->conv);
 				break;
 
 			default: NOT_REACHED();
 		}
 
 		/* The value is different, that means we have to write it to the ini */
-		free(item->value);
-		item->value = stredup(buf);
+		item->value.emplace(buf);
 	}
 }
 
@@ -756,7 +791,7 @@ static void IniLoadSettingList(IniFile *ini, const char *grpname, StringList &li
 	list.clear();
 
 	for (const IniItem *item = group->item; item != nullptr; item = item->next) {
-		if (item->name != nullptr) list.emplace_back(item->name);
+		if (!item->name.empty()) list.push_back(item->name);
 	}
 }
 
@@ -915,8 +950,7 @@ static bool DeleteSelectStationWindow(int32 p1)
 
 static bool UpdateConsists(int32 p1)
 {
-	Train *t;
-	FOR_ALL_TRAINS(t) {
+	for (Train *t : Train::Iterate()) {
 		/* Update the consist of all trains so the maximum speed is set correctly. */
 		if (t->IsFrontEngine() || t->IsFreeWagon()) t->ConsistChanged(CCF_TRACK);
 	}
@@ -951,8 +985,7 @@ static bool CheckInterval(int32 p1)
 
 	if (update_vehicles) {
 		const Company *c = Company::Get(_current_company);
-		Vehicle *v;
-		FOR_ALL_VEHICLES(v) {
+		for (Vehicle *v : Vehicle::Iterate()) {
 			if (v->owner == _current_company && v->IsPrimaryVehicle() && !v->ServiceIntervalIsCustom()) {
 				v->SetServiceInterval(CompanyServiceInterval(c, v->type));
 				v->SetServiceIntervalIsPercent(p1 != 0);
@@ -982,8 +1015,7 @@ static bool UpdateInterval(VehicleType type, int32 p1)
 	if (interval != p1) return false;
 
 	if (update_vehicles) {
-		Vehicle *v;
-		FOR_ALL_VEHICLES(v) {
+		for (Vehicle *v : Vehicle::Iterate()) {
 			if (v->owner == _current_company && v->type == type && v->IsPrimaryVehicle() && !v->ServiceIntervalIsCustom()) {
 				v->SetServiceInterval(p1);
 			}
@@ -1017,8 +1049,7 @@ static bool UpdateIntervalAircraft(int32 p1)
 
 static bool TrainAccelerationModelChanged(int32 p1)
 {
-	Train *t;
-	FOR_ALL_TRAINS(t) {
+	for (Train *t : Train::Iterate()) {
 		if (t->IsFrontEngine()) {
 			t->tcache.cached_max_curve_speed = t->GetCurveSpeedLimit();
 			t->UpdateAcceleration();
@@ -1040,8 +1071,7 @@ static bool TrainAccelerationModelChanged(int32 p1)
  */
 static bool TrainSlopeSteepnessChanged(int32 p1)
 {
-	Train *t;
-	FOR_ALL_TRAINS(t) {
+	for (Train *t : Train::Iterate()) {
 		if (t->IsFrontEngine()) t->CargoChanged();
 	}
 
@@ -1056,16 +1086,14 @@ static bool TrainSlopeSteepnessChanged(int32 p1)
 static bool RoadVehAccelerationModelChanged(int32 p1)
 {
 	if (_settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL) {
-		RoadVehicle *rv;
-		FOR_ALL_ROADVEHICLES(rv) {
+		for (RoadVehicle *rv : RoadVehicle::Iterate()) {
 			if (rv->IsFrontEngine()) {
 				rv->CargoChanged();
 			}
 		}
 	}
 	if (_settings_game.vehicle.roadveh_acceleration_model == AM_ORIGINAL || !_settings_game.vehicle.improved_breakdowns) {
-		RoadVehicle *rv;
-		FOR_ALL_ROADVEHICLES(rv) {
+		for (RoadVehicle *rv : RoadVehicle::Iterate()) {
 			if (rv->IsFrontEngine()) {
 				rv->breakdown_chance_factor = 128;
 			}
@@ -1087,8 +1115,7 @@ static bool RoadVehAccelerationModelChanged(int32 p1)
  */
 static bool RoadVehSlopeSteepnessChanged(int32 p1)
 {
-	RoadVehicle *rv;
-	FOR_ALL_ROADVEHICLES(rv) {
+	for (RoadVehicle *rv : RoadVehicle::Iterate()) {
 		if (rv->IsFrontEngine()) rv->CargoChanged();
 	}
 
@@ -1238,6 +1265,21 @@ static bool EnableSingleVehSharedOrderGuiChanged(int32)
 	return true;
 }
 
+static bool CheckYapfRailSignalPenalties(int32)
+{
+	extern void YapfCheckRailSignalPenalties();
+	YapfCheckRailSignalPenalties();
+
+	return true;
+}
+
+static bool ViewportMapShowTunnelModeChanged(int32 p1)
+{
+	extern void ViewportMapBuildTunnelCache();
+	ViewportMapBuildTunnelCache();
+	return RedrawScreen(p1);
+}
+
 /** Checks if any settings are set to incorrect values, and sets them to correct values in that case. */
 static void ValidateSettings()
 {
@@ -1257,6 +1299,12 @@ static bool DifficultyNoiseChange(int32 i)
 		}
 	}
 
+	return true;
+}
+
+static bool DifficultyMoneyCheatMultiplayerChange(int32 i)
+{
+	DeleteWindowById(WC_CHEATS, 0);
 	return true;
 }
 
@@ -1300,16 +1348,14 @@ static bool CheckFreeformEdges(int32 p1)
 {
 	if (_game_mode == GM_MENU) return true;
 	if (p1 != 0) {
-		Ship *s;
-		FOR_ALL_SHIPS(s) {
+		for (Ship *s : Ship::Iterate()) {
 			/* Check if there is a ship on the northern border. */
 			if (TileX(s->tile) == 0 || TileY(s->tile) == 0) {
 				ShowErrorMessage(STR_CONFIG_SETTING_EDGES_NOT_EMPTY, INVALID_STRING_ID, WL_ERROR);
 				return false;
 			}
 		}
-		BaseStation *st;
-		FOR_ALL_BASE_STATIONS(st) {
+		for (const BaseStation *st : BaseStation::Iterate()) {
 			/* Check if there is a non-deleted buoy on the northern border. */
 			if (st->IsInUse() && (TileX(st->xy) == 0 || TileY(st->xy) == 0)) {
 				ShowErrorMessage(STR_CONFIG_SETTING_EDGES_NOT_EMPTY, INVALID_STRING_ID, WL_ERROR);
@@ -1397,8 +1443,7 @@ static bool ChangeMaxHeightLevel(int32 p1)
 static bool StationCatchmentChanged(int32 p1)
 {
 	Station::RecomputeCatchmentForAll();
-	Station *st;
-	FOR_ALL_STATIONS(st) UpdateStationAcceptance(st, true);
+	for (Station *st : Station::Iterate()) UpdateStationAcceptance(st, true);
 	MarkWholeScreenDirty();
 	return true;
 }
@@ -1434,8 +1479,7 @@ static bool MaxVehiclesChanged(int32 p1)
 
 static bool InvalidateShipPathCache(int32 p1)
 {
-	Ship *s;
-	FOR_ALL_SHIPS(s) {
+	for (Ship *s : Ship::Iterate()) {
 		s->path.clear();
 	}
 	return true;
@@ -1445,8 +1489,7 @@ static bool ImprovedBreakdownsSettingChanged(int32 p1)
 {
 	if (!_settings_game.vehicle.improved_breakdowns) return true;
 
-	Vehicle *v;
-	FOR_ALL_VEHICLES(v) {
+	for (Vehicle *v : Vehicle::Iterate()) {
 		switch(v->type) {
 			case VEH_TRAIN:
 				if (v->IsFrontEngine()) {
@@ -1532,6 +1575,15 @@ static int OrderTownGrowthRate(uint nth)
 
 /* End - GUI order callbacks */
 
+/* Begin - xref conversion callbacks */
+
+static int64 LinkGraphDistModeXrefChillPP(int64 val)
+{
+	return val ^ 2;
+}
+
+/* End - xref conversion callbacks */
+
 /**
  * Prepare for reading and old diff_custom by zero-ing the memory.
  */
@@ -1586,14 +1638,14 @@ static void AILoadConfig(IniFile *ini, const char *grpname)
 	for (item = group->item; c < MAX_COMPANIES && item != nullptr; c++, item = item->next) {
 		AIConfig *config = AIConfig::GetConfig(c, AIConfig::SSS_FORCE_NEWGAME);
 
-		config->Change(item->name);
+		config->Change(item->name.c_str());
 		if (!config->HasScript()) {
-			if (strcmp(item->name, "none") != 0) {
-				DEBUG(script, 0, "The AI by the name '%s' was no longer found, and removed from the list.", item->name);
+			if (item->name != "none") {
+				DEBUG(script, 0, "The AI by the name '%s' was no longer found, and removed from the list.", item->name.c_str());
 				continue;
 			}
 		}
-		if (item->value != nullptr) config->StringToSettings(item->value);
+		if (item->value.has_value()) config->StringToSettings(item->value->c_str());
 	}
 }
 
@@ -1613,14 +1665,14 @@ static void GameLoadConfig(IniFile *ini, const char *grpname)
 
 	GameConfig *config = GameConfig::GetConfig(AIConfig::SSS_FORCE_NEWGAME);
 
-	config->Change(item->name);
+	config->Change(item->name.c_str());
 	if (!config->HasScript()) {
-		if (strcmp(item->name, "none") != 0) {
-			DEBUG(script, 0, "The GameScript by the name '%s' was no longer found, and removed from the list.", item->name);
+		if (item->name != "none") {
+			DEBUG(script, 0, "The GameScript by the name '%s' was no longer found, and removed from the list.", item->name.c_str());
 			return;
 		}
 	}
-	if (item->value != nullptr) config->StringToSettings(item->value);
+	if (item->value.has_value()) config->StringToSettings(item->value->c_str());
 }
 
 /**
@@ -1644,7 +1696,7 @@ static int DecodeHexNibble(char c)
  * @param dest_size Number of bytes in \a dest.
  * @return Whether reading was successful.
  */
-static bool DecodeHexText(char *pos, uint8 *dest, size_t dest_size)
+static bool DecodeHexText(const char *pos, uint8 *dest, size_t dest_size)
 {
 	while (dest_size > 0) {
 		int hi = DecodeHexNibble(pos[0]);
@@ -1676,7 +1728,7 @@ static GRFConfig *GRFLoadConfig(IniFile *ini, const char *grpname, bool is_stati
 		GRFConfig *c = nullptr;
 
 		uint8 grfid_buf[4], md5sum[16];
-		char *filename = item->name;
+		const char *filename = item->name.c_str();
 		bool has_grfid = false;
 		bool has_md5sum = false;
 
@@ -1700,8 +1752,8 @@ static GRFConfig *GRFLoadConfig(IniFile *ini, const char *grpname, bool is_stati
 		if (c == nullptr) c = new GRFConfig(filename);
 
 		/* Parse parameters */
-		if (!StrEmpty(item->value)) {
-			int count = ParseIntList(item->value, (int*)c->param, lengthof(c->param));
+		if (item->value.has_value() && !item->value->empty()) {
+			int count = ParseIntList(item->value->c_str(), c->param, lengthof(c->param));
 			if (count < 0) {
 				SetDParamStr(0, filename);
 				ShowErrorMessage(STR_CONFIG_ERROR, STR_CONFIG_ERROR_ARRAY, WL_CRITICAL);
@@ -1724,7 +1776,7 @@ static GRFConfig *GRFLoadConfig(IniFile *ini, const char *grpname, bool is_stati
 				SetDParam(1, STR_CONFIG_ERROR_INVALID_GRF_UNKNOWN);
 			}
 
-			SetDParamStr(0, StrEmpty(filename) ? item->name : filename);
+			SetDParamStr(0, StrEmpty(filename) ? item->name.c_str() : filename);
 			ShowErrorMessage(STR_CONFIG_ERROR, STR_CONFIG_ERROR_INVALID_GRF, WL_CRITICAL);
 			delete c;
 			continue;
@@ -1868,7 +1920,7 @@ static void HandleSettingDescs(IniFile *ini, SettingDescProc *proc, SettingDescP
 static IniFile *IniLoadConfig()
 {
 	IniFile *ini = new IniFile(_list_group_names);
-	ini->LoadFromDisk(_config_file, NO_DIRECTORY);
+	ini->LoadFromDisk(_config_file, NO_DIRECTORY, &_config_file_text);
 	return ini;
 }
 
@@ -1935,8 +1987,8 @@ StringList GetGRFPresetList()
 
 	std::unique_ptr<IniFile> ini(IniLoadConfig());
 	for (IniGroup *group = ini->group; group != nullptr; group = group->next) {
-		if (strncmp(group->name, "preset-", 7) == 0) {
-			list.emplace_back(group->name + 7);
+		if (group->name.compare(0, 7, "preset-") == 0) {
+			list.push_back(group->name.substr(7));
 		}
 	}
 
@@ -2370,9 +2422,9 @@ void IConsoleListSettings(const char *prefilter)
  * a pointer to a struct which is getting saved
  */
 static void LoadSettingsXref(const SettingDesc *osd, void *object) {
-	DEBUG(sl, 3, "PATS chunk: Loading xref setting: '%s'", osd->xref);
+	DEBUG(sl, 3, "PATS chunk: Loading xref setting: '%s'", osd->xref.target);
 	uint index = 0;
-	const SettingDesc *setting_xref = GetSettingFromName(osd->xref, &index, true);
+	const SettingDesc *setting_xref = GetSettingFromName(osd->xref.target, &index, true);
 	assert(setting_xref != nullptr);
 
 	// Generate a new SaveLoad from the xref target using the version params from the source
@@ -2383,7 +2435,9 @@ static void LoadSettingsXref(const SettingDesc *osd, void *object) {
 	void *ptr = GetVariableAddress(object, &sld);
 
 	if (!SlObjectMember(ptr, &sld)) return;
-	if (IsNumericType(sld.conv)) Write_ValidateSetting(ptr, setting_xref, ReadValue(ptr, sld.conv));
+	int64 val = ReadValue(ptr, sld.conv);
+	if (osd->xref.conv != nullptr) val = osd->xref.conv(val);
+	if (IsNumericType(sld.conv)) Write_ValidateSetting(ptr, setting_xref, val);
 }
 
 /**
@@ -2399,7 +2453,7 @@ static void LoadSettings(const SettingDesc *osd, void *object)
 	for (; osd->save.cmd != SL_END; osd++) {
 		if (osd->patx_name != nullptr) continue;
 		const SaveLoad *sld = &osd->save;
-		if (osd->xref != nullptr) {
+		if (osd->xref.target != nullptr) {
 			if (sld->ext_feature_test.IsFeaturePresent(_sl_version, sld->version_from, sld->version_to)) LoadSettingsXref(osd, object);
 			continue;
 		}
@@ -2424,7 +2478,7 @@ static void SaveSettings(const SettingDesc *sd, void *object)
 	size_t length = 0;
 	for (i = sd; i->save.cmd != SL_END; i++) {
 		if (i->patx_name != nullptr) continue;
-		if (i->xref != nullptr) continue;
+		if (i->xref.target != nullptr) continue;
 		length += SlCalcObjMemberLength(object, &i->save);
 	}
 	SlSetLength(length);
@@ -2718,8 +2772,7 @@ void SaveSettingsPlyx()
 	size_t length = 8;
 	uint32 companies_count = 0;
 
-	Company *c;
-	FOR_ALL_COMPANIES(c) {
+	for (Company *c : Company::Iterate()) {
 		length += 12;
 		companies_count++;
 		uint32 setting_count = 0;
@@ -2746,7 +2799,7 @@ void SaveSettingsPlyx()
 	SlWriteUint32(companies_count);            // companies count
 
 	size_t index = 0;
-	FOR_ALL_COMPANIES(c) {
+	for (Company *c : Company::Iterate()) {
 		length += 12;
 		companies_count++;
 		SlWriteUint32(c->index);               // company ID

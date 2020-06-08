@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -21,7 +19,7 @@
 #include "openttd.h"
 #include "table/strings.h"
 #include "company_func.h"
-#include "core/alloc_type.hpp"
+#include "core/tinystring_type.hpp"
 #include <list>
 #include <memory>
 
@@ -50,7 +48,7 @@ extern TownPool _town_pool;
 struct TownCache {
 	uint32 num_houses;                        ///< Amount of houses
 	uint32 population;                        ///< Current population of people
-	ViewportSign sign;                        ///< Location of name sign, UpdateVirtCoord updates this
+	TrackedViewportSign sign;                 ///< Location of name sign, UpdateVirtCoord updates this
 	PartOfSubsidy part_of_subsidy;            ///< Is this town a source/destination of a subsidy?
 	uint32 squared_town_zone_radius[HZB_END]; ///< UpdateTownRadius updates this given the house count
 	BuildingCounts<uint16> building_counts;   ///< The number of each type of building in the town
@@ -66,8 +64,8 @@ struct Town : TownPool::PoolItem<&_town_pool> {
 	uint32 townnamegrfid;
 	uint16 townnametype;
 	uint32 townnameparts;
-	char *name;                    ///< Custom town name. If nullptr, the town was not renamed and uses the generated name.
-	std::unique_ptr<const char, FreeDeleter> cached_name; ///< NOSAVE: Cache of the resolved name of the town, if not using a custom town name
+	TinyString name;                 ///< Custom town name. If empty, the town was not renamed and uses the generated name.
+	mutable std::string cached_name; ///< NOSAVE: Cache of the resolved name of the town, if not using a custom town name
 
 	byte flags;                    ///< See #TownFlags.
 
@@ -87,7 +85,7 @@ struct Town : TownPool::PoolItem<&_town_pool> {
 	TransportedCargoStat<uint16> received[NUM_TE];    ///< Cargo statistics about received cargotypes.
 	uint32 goal[NUM_TE];                              ///< Amount of cargo required for the town to grow.
 
-	char *text; ///< General text with additional information.
+	std::string text; ///< General text with additional information.
 
 	inline byte GetPercentTransported(CargoID cid) const { return this->supplied[cid].old_act * 256 / (this->supplied[cid].old_max + 1); }
 
@@ -165,9 +163,9 @@ struct Town : TownPool::PoolItem<&_town_pool> {
 
 	inline const char *GetCachedName() const
 	{
-		if (this->name != nullptr) return this->name;
-		if (!this->cached_name) const_cast<Town *>(this)->FillCachedName();
-		return this->cached_name.get();
+		if (!this->name.empty()) return this->name.c_str();
+		if (this->cached_name.empty()) this->FillCachedName();
+		return this->cached_name.c_str();
 	}
 
 	static inline Town *GetByTile(TileIndex tile)
@@ -178,8 +176,8 @@ struct Town : TownPool::PoolItem<&_town_pool> {
 	static Town *GetRandom();
 	static void PostDestructor(size_t index);
 
-	private:
-	void FillCachedName();
+private:
+	void FillCachedName() const;
 };
 
 uint32 GetWorldPopulation();
@@ -205,7 +203,8 @@ enum TownRatingCheckType {
 /** Special values for town list window for the data parameter of #InvalidateWindowData. */
 enum TownDirectoryInvalidateWindowData {
 	TDIWD_FORCE_REBUILD,
-	TDIWD_FILTER_CHANGES,        ///< The filename filter has changed (via the editbox)
+	TDIWD_POPULATION_CHANGE,
+	TDIWD_FORCE_RESORT,
 };
 
 /**
@@ -228,9 +227,6 @@ CommandCost CheckforTownRating(DoCommandFlag flags, Town *t, TownRatingCheckType
 TileIndexDiff GetHouseNorthPart(HouseID &house);
 
 Town *CalcClosestTownFromTile(TileIndex tile, uint threshold = UINT_MAX);
-
-#define FOR_ALL_TOWNS_FROM(var, start) FOR_ALL_ITEMS_FROM(Town, town_index, var, start)
-#define FOR_ALL_TOWNS(var) FOR_ALL_TOWNS_FROM(var, 0)
 
 void ResetHouses();
 
@@ -284,7 +280,7 @@ template <class T>
 void MakeDefaultName(T *obj)
 {
 	/* We only want to set names if it hasn't been set before, or when we're calling from afterload. */
-	assert(obj->name == nullptr || obj->town_cn == UINT16_MAX);
+	assert(obj->name.empty() || obj->town_cn == UINT16_MAX);
 
 	obj->town = ClosestTownFromTile(obj->xy, UINT_MAX);
 

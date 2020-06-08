@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -19,6 +17,7 @@
 
 struct Vehicle;
 struct BaseStation;
+struct Window;
 
 #ifdef USE_SCOPE_INFO
 
@@ -73,6 +72,7 @@ struct scope_dumper {
 	const char *VehicleInfo(const Vehicle *v);
 	const char *StationInfo(const BaseStation *st);
 	const char *TileInfo(TileIndex tile);
+	const char *WindowInfo(const Window *w);
 
 private:
 	char buffer[512];

@@ -1,6 +1,6 @@
 # Version numbers to update
 !define APPV_MAJOR 1
-!define APPV_MINOR 10
+!define APPV_MINOR 11
 !define APPV_MAINT 0
 !define APPV_BUILD 0
 !define APPV_EXTRA "-beta1"
@@ -63,7 +63,7 @@ Var CDDRIVE
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE_3LINES
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "..\..\..\COPYING"
+!insertmacro MUI_PAGE_LICENSE "..\..\..\COPYING.md"
 
 !define MUI_COMPONENTSPAGE_SMALLDESC
 !insertmacro MUI_PAGE_COMPONENTS
@@ -145,8 +145,8 @@ Section "!OpenTTD" Section1
 
 	; Copy some documentation files
 	SetOutPath "$INSTDIR\docs\"
-	File ${PATH_ROOT}docs\multiplayer.txt
-	Push "$INSTDIR\docs\multiplayer.txt"
+	File ${PATH_ROOT}docs\multiplayer.md
+	Push "$INSTDIR\docs\multiplayer.md"
 	Call unix2dos
 
 	; Copy the rest of the stuff
@@ -156,8 +156,8 @@ Section "!OpenTTD" Section1
 	File ${PATH_ROOT}changelog.txt
 	Push "$INSTDIR\changelog.txt"
 	Call unix2dos
-	File ${PATH_ROOT}COPYING
-	Push "$INSTDIR\COPYING"
+	File ${PATH_ROOT}COPYING.md
+	Push "$INSTDIR\COPYING.md"
 	Call unix2dos
 	File ${PATH_ROOT}README.md
 	Push "$INSTDIR\README.md"
@@ -218,7 +218,7 @@ Section "!OpenTTD" Section1
 	CreateShortCut "$SMPROGRAMS\$SHORTCUTS\Changelog.lnk" "$INSTDIR\Changelog.txt"
 	CreateShortCut "$SMPROGRAMS\$SHORTCUTS\Known-bugs.lnk" "$INSTDIR\known-bugs.txt"
 	CreateDirectory "$SMPROGRAMS\$SHORTCUTS\Docs"
-	CreateShortCut "$SMPROGRAMS\$SHORTCUTS\Docs\Multiplayer.lnk" "$INSTDIR\docs\multiplayer.txt"
+	CreateShortCut "$SMPROGRAMS\$SHORTCUTS\Docs\Multiplayer.lnk" "$INSTDIR\docs\multiplayer.md"
 	CreateDirectory "$SMPROGRAMS\$SHORTCUTS\Scripts"
 	CreateShortCut "$SMPROGRAMS\$SHORTCUTS\Scripts\Readme.lnk" "$INSTDIR\scripts\README.md"
 	!insertmacro MUI_STARTMENU_WRITE_END
@@ -392,7 +392,7 @@ Section "Uninstall"
 	Delete "$INSTDIR\README.md"
 	Delete "$INSTDIR\known-bugs.txt"
 	Delete "$INSTDIR\openttd.exe"
-	Delete "$INSTDIR\COPYING"
+	Delete "$INSTDIR\COPYING.md"
 	Delete "$INSTDIR\INSTALL.LOG"
 	Delete "$INSTDIR\crash.log"
 	Delete "$INSTDIR\crash.dmp"
@@ -599,12 +599,12 @@ Function CheckWindowsVersion
 	StrCmp $R0 "win9x" 0 WinNT
 	ClearErrors
 	StrCmp ${APPARCH} "win9x" Done 0
-	MessageBox MB_YESNO|MB_ICONSTOP "You are trying to install the Windows XP SP3, Vista and 7 version on Windows 95, 98, ME, 2000 and XP without SP3. This is will not work. Please download the correct version. Do you really want to continue?" IDYES Done IDNO Abort
+	MessageBox MB_YESNO|MB_ICONSTOP "You are trying to install the Windows XP SP3 and newer version on Windows 95, 98, ME, 2000, or XP without SP3. This will not work - please download the correct version. Do you really want to continue?" IDYES Done IDNO Abort
 	GoTo Done
 WinNT:
 	ClearErrors
 	StrCmp ${APPARCH} "win9x" 0 Done
-	MessageBox MB_YESNO|MB_ICONEXCLAMATION "You are trying to install the Windows 95, 98, 2000 and XP without SP3 version on Windows XP SP3, Vista or 7. This is not advised, but will work with reduced capabilities. We suggest that you download the correct version. Do you really want to continue?" IDYES Done IDNO Abort
+	MessageBox MB_YESNO|MB_ICONEXCLAMATION "You are trying to install the Windows 95, 98, 2000 and XP without SP3 version on Windows XP SP3 or newer. This is not advised, but will work with reduced capabilities. We suggest that you download the correct version. Do you really want to continue?" IDYES Done IDNO Abort
 Abort:
 	Quit
 Done:

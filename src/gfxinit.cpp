@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -136,7 +134,7 @@ void CheckExternalFiles()
 
 	const GraphicsSet *used_set = BaseGraphics::GetUsedSet();
 
-	DEBUG(grf, 1, "Using the %s base graphics set", used_set->name);
+	DEBUG(grf, 1, "Using the %s base graphics set", used_set->name.c_str());
 
 	static const size_t ERROR_MESSAGE_LENGTH = 256;
 	static const size_t MISSING_FILE_MESSAGE_LENGTH = 128;
@@ -151,7 +149,7 @@ void CheckExternalFiles()
 
 	if (used_set->GetNumInvalid() != 0) {
 		/* Not all files were loaded successfully, see which ones */
-		add_pos += seprintf(add_pos, last, "Trying to load graphics set '%s', but it is incomplete. The game will probably not run correctly until you properly install this set or select another one. See section 4.1 of README.md.\n\nThe following files are corrupted or missing:\n", used_set->name);
+		add_pos += seprintf(add_pos, last, "Trying to load graphics set '%s', but it is incomplete. The game will probably not run correctly until you properly install this set or select another one. See section 4.1 of README.md.\n\nThe following files are corrupted or missing:\n", used_set->name.c_str());
 		for (uint i = 0; i < GraphicsSet::NUM_FILES; i++) {
 			MD5File::ChecksumResult res = GraphicsSet::CheckMD5(&used_set->files[i], BASESET_DIR);
 			if (res != MD5File::CR_MATCH) add_pos += seprintf(add_pos, last, "\t%s is %s (%s)\n", used_set->files[i].filename, res == MD5File::CR_MISMATCH ? "corrupt" : "missing", used_set->files[i].missing_warning);
@@ -161,7 +159,7 @@ void CheckExternalFiles()
 
 	const SoundsSet *sounds_set = BaseSounds::GetUsedSet();
 	if (sounds_set->GetNumInvalid() != 0) {
-		add_pos += seprintf(add_pos, last, "Trying to load sound set '%s', but it is incomplete. The game will probably not run correctly until you properly install this set or select another one. See section 4.1 of README.md.\n\nThe following files are corrupted or missing:\n", sounds_set->name);
+		add_pos += seprintf(add_pos, last, "Trying to load sound set '%s', but it is incomplete. The game will probably not run correctly until you properly install this set or select another one. See section 4.1 of README.md.\n\nThe following files are corrupted or missing:\n", sounds_set->name.c_str());
 
 		assert_compile(SoundsSet::NUM_FILES == 1);
 		/* No need to loop each file, as long as there is only a single
@@ -186,7 +184,7 @@ static void LoadSpriteTables()
 	_progsig_grf_file_index = i;
 	LoadGrfFile("progsignals.grf", SPR_PROGSIGNAL_BASE, i++);
 
-	/* Fill duplicate programmable signal graphics sprite block */
+	/* Fill duplicate programmable pre-signal graphics sprite block */
 	for (uint i = 0; i < PROGSIGNAL_SPRITE_COUNT; i++) {
 		DupSprite(SPR_PROGSIGNAL_BASE + i, SPR_DUP_PROGSIGNAL_BASE + i);
 	}
@@ -505,11 +503,11 @@ bool GraphicsSet::FillSetDetails(IniFile *ini, const char *path, const char *ful
 		IniItem *item;
 
 		fetch_metadata("palette");
-		this->palette = (*item->value == 'D' || *item->value == 'd') ? PAL_DOS : PAL_WINDOWS;
+		this->palette = (item->value.value()[0] == 'D' || item->value.value()[0] == 'd') ? PAL_DOS : PAL_WINDOWS;
 
 		/* Get optional blitter information. */
 		item = metadata->GetItem("blitter", false);
-		this->blitter = (item != nullptr && *item->value == '3') ? BLT_32BPP : BLT_8BPP;
+		this->blitter = (item != nullptr && item->value.value()[0] == '3') ? BLT_32BPP : BLT_8BPP;
 	}
 	return ret;
 }

@@ -5,17 +5,20 @@ This document does not describe the player-visible changes/additions described i
 
 ### Crash logger and diagnostics
 
-* Additional logged items: current company ID, map size, configure invocation, detailed OS version (Unix), thread name, signal details (Unix, Mac), recently executed commands.
+* Additional logged items: current company ID, map size, configure invocation, thread name, recently executed commands.
+* Additional logged platform-specific items: detailed OS version (Unix), signal details (Unix, Mac), exception record data (Windows).
 * Better handling of crashes which occur in a non-main thread (ask the main thread to do the crash screenshot and savegame).
 * Support logging register values on Unix and Mac.
 * Support using libbfd for symbol lookup and line numbers (gcc/clang).
 * Support using gdb/lldb if available to add further detail to the crashlog (Unix, Mac).
-* Support using sigaction and sigaltstack for more information and correct handling of stack overflow crashes (Unix, Mac).
+* Support using sigaction and sigaltstack for more information and correct handling of stack overflow crashes (Unix).
+* Attempt to log stack overflow and heap corruption exceptions (Windows).
 * Demangle C++ symbols (Unix).
 * Attempt to handle segfaults which occur within the crashlog handler (Unix).
 * Emit a "crash" log, savegame and screenshot on multiplayer desync.
 * Add crash/desync information to output screenshot and savegame files.
-* Send a copy of the desync crash log to the multiplayer server.
+* Multiplayer server and client exchange desync logs after a desync occurs.
+* Decrease sync frame period when desync occurs.
 
 #### Assertions
 
@@ -45,6 +48,18 @@ De-virtualise calls to AnimateTile().
 
 Cache bridge/tunnel start and ends.
 Cache station sign bounds.
+Split sprite sort regions when more than 60 sprites present.
+Reduce unnecessary region redraws when scrolling viewports.
+Reduce viewport invalidation region size of track reservation and signal state changes.
+
+### Rendering
+
+Track dirty viewport areas seperately form general screen redraws, using a zoom-level dependant sized grid.
+Use a rectangle array for general screen redraws instead of a block grid.
+Add a dirty bit to windows and widgets, for redrawing entire windows or widgets.
+Clip drawing of window widgets which are not in the redraw area.
+Reduce unnecessary status bar redraws.
+Filter out tile parts which are entirely outside the drawing area, within DrawTileProc handlers.
 
 ### Data structures
 
@@ -52,6 +67,8 @@ Various data structures have been replaced with B-tree maps/sets (cpp-btree libr
 Various lists have been replaced with vectors or deques, etc.
 Remove mutexes from SmallStack, only used from the main thread.
 Use std::string in CommandContainer instead of a giant static buffer.
+Add a free bitmap for pool slots.
+Maintain free list for text effect entries.
 
 ### Vehicles
 
@@ -61,6 +78,7 @@ Observe the operation of the NewGRF when getting the vehicle image/sprite, and e
 Add consist flag for case where no vehicles in consist are on a slope.
 Add vehicle flag to mark the last vehicle in a consist with a visual effect.
 Index the vehicle list in per type arrays for use by CallVehicleTicks.
+Cache whether the vehicle should be drawn.
 
 ### Network/multiplayer
 
@@ -79,6 +97,13 @@ Completely change link graph job scheduling to make the duration of a job and th
 Various use of custom allocators, etc.
 Early abort link graph threads if abandoning/quitting the game.
 Various forms of caching and incremental updates to the link graph overlay.
+Change FlowStat from an RB-tree to a flat map with small-object optimisation.
+Change FlowStatMap from an RB-tree to a B-tree indexed vector.
+Replace MCF Dijkstra RB-tree with B-tree.
+
+### Pathfinder
+
+YAPF: Reduce need to scan open list queue when moving best node to closed list
 
 ### Save and load
 
@@ -87,6 +112,16 @@ Extend gamelog to not truncate version strings.
 Save/load the map in a single chunk, such that it can be saved/loaded in one pass.
 Various other changes to savegame format and settings handling, see readme and code for details.
 Replace read/write accessors and buffering.
+Perform savegame decompression in a separate thread.
+Pre-filter SaveLoad descriptor arrays for current version/mode, for chunks with many objects.
+
+### Other performance improvements
+
+Use multiple threads for NewGRF scan MD5 calculations, on multi-CPU machines.
+Avoid redundant re-scans for AI and game script files.
+Avoid iterating vehicle list to release disaster vehicles if there are none.
+Avoid quadratic behaviour in updating station nearby lists in RecomputeCatchmentForAll.
+Increase FIO buffer size.
 
 ### Command line
 
@@ -107,3 +142,4 @@ Cache font heights.
 Cache resolved names for stations, towns and industries.
 Change inheritance model of class Window to keep UndefinedBehaviorSanitizer happy.
 Various other misc changes to reduce UndefinedBehaviorSanitizer spam.
+Add a chicken bits setting, just in case.

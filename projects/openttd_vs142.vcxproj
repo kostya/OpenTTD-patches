@@ -100,7 +100,7 @@
       </HeaderFileName>
     </Midl>
     <ClCompile>
-      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -168,7 +168,7 @@
       </HeaderFileName>
     </Midl>
     <ClCompile>
-      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <AdditionalIncludeDirectories>..\objs\langs;..\objs\settings;..\src\3rdparty\squirrel\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -223,7 +223,7 @@
       </HeaderFileName>
     </Midl>
     <ClCompile>
-      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Full</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -289,7 +289,7 @@
       </HeaderFileName>
     </Midl>
     <ClCompile>
-      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/J /Zc:throwingNew /std:c++latest /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <AdditionalIncludeDirectories>..\objs\langs;..\objs\settings;..\src\3rdparty\squirrel\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -420,6 +420,7 @@
     <ClCompile Include="..\src\rev.cpp" />
     <ClCompile Include="..\src\road.cpp" />
     <ClCompile Include="..\src\roadstop.cpp" />
+    <ClCompile Include="..\src\screenshot_gui.cpp" />
     <ClCompile Include="..\src\screenshot.cpp" />
     <ClCompile Include="..\src\settings.cpp" />
     <ClCompile Include="..\src\signal.cpp" />
@@ -601,6 +602,7 @@
     <ClInclude Include="..\src\newgrf_industries.h" />
     <ClInclude Include="..\src\newgrf_industrytiles.h" />
     <ClInclude Include="..\src\newgrf_object.h" />
+    <ClInclude Include="..\src\newgrf_profiling.h" />
     <ClInclude Include="..\src\newgrf_properties.h" />
     <ClInclude Include="..\src\newgrf_railtype.h" />
     <ClInclude Include="..\src\newgrf_roadtype.h" />
@@ -649,8 +651,10 @@
     <ClInclude Include="..\src\safeguards.h" />
     <ClInclude Include="..\src\scope.h" />
     <ClInclude Include="..\src\screenshot.h" />
+    <ClInclude Include="..\src\screenshot_gui.h" />
     <ClInclude Include="..\src\sound\sdl_s.h" />
     <ClInclude Include="..\src\video\sdl_v.h" />
+    <ClInclude Include="..\src\video\sdl2_v.h" />
     <ClInclude Include="..\src\schdispatch.h" />
     <ClInclude Include="..\src\settings_func.h" />
     <ClInclude Include="..\src\settings_gui.h" />
@@ -780,6 +784,7 @@
     <ClInclude Include="..\src\core\smallstack_type.hpp" />
     <ClInclude Include="..\src\core\smallvec_type.hpp" />
     <ClInclude Include="..\src\core\string_compare_type.hpp" />
+    <ClInclude Include="..\src\core\tinystring_type.hpp" />
     <ClCompile Include="..\src\aircraft_gui.cpp" />
     <ClCompile Include="..\src\airport_gui.cpp" />
     <ClCompile Include="..\src\autoreplace_gui.cpp" />
@@ -886,6 +891,7 @@
     <ClInclude Include="..\src\widgets\plans_widget.h" />
     <ClInclude Include="..\src\widgets\rail_widget.h" />
     <ClInclude Include="..\src\widgets\road_widget.h" />
+    <ClInclude Include="..\src\widgets\screenshot_widget.h" />
     <ClInclude Include="..\src\widgets\settings_widget.h" />
     <ClInclude Include="..\src\widgets\sign_widget.h" />
     <ClInclude Include="..\src\widgets\smallmap_widget.h" />
@@ -1024,6 +1030,8 @@
     <ClInclude Include="..\src\table\water_land.h" />
     <ClCompile Include="..\src\3rdparty\md5\md5.cpp" />
     <ClInclude Include="..\src\3rdparty\md5\md5.h" />
+    <ClInclude Include="..\src\3rdparty\optional\optional.hpp" />
+    <ClInclude Include="..\src\3rdparty\optional\ottd_optional.h" />
     <ClCompile Include="..\src\script\script_config.cpp" />
     <ClInclude Include="..\src\script\script_config.hpp" />
     <ClInclude Include="..\src\script\script_fatalerror.hpp" />
@@ -1144,6 +1152,7 @@
     <ClInclude Include="..\src\script\api\script_news.hpp" />
     <ClInclude Include="..\src\script\api\script_object.hpp" />
     <ClInclude Include="..\src\script\api\script_order.hpp" />
+    <ClInclude Include="..\src\script\api\script_priorityqueue.hpp" />
     <ClInclude Include="..\src\script\api\script_rail.hpp" />
     <ClInclude Include="..\src\script\api\script_railtypelist.hpp" />
     <ClInclude Include="..\src\script\api\script_road.hpp" />
@@ -1211,6 +1220,7 @@
     <ClCompile Include="..\src\script\api\script_news.cpp" />
     <ClCompile Include="..\src\script\api\script_object.cpp" />
     <ClCompile Include="..\src\script\api\script_order.cpp" />
+    <ClCompile Include="..\src\script\api\script_priorityqueue.cpp" />
     <ClCompile Include="..\src\script\api\script_rail.cpp" />
     <ClCompile Include="..\src\script\api\script_railtypelist.cpp" />
     <ClCompile Include="..\src\script\api\script_road.cpp" />
@@ -1287,6 +1297,7 @@
     <ClCompile Include="..\src\newgrf_industries.cpp" />
     <ClCompile Include="..\src\newgrf_industrytiles.cpp" />
     <ClCompile Include="..\src\newgrf_object.cpp" />
+    <ClCompile Include="..\src\newgrf_profiling.cpp" />
     <ClCompile Include="..\src\newgrf_railtype.cpp" />
     <ClCompile Include="..\src\newgrf_roadtype.cpp" />
     <ClCompile Include="..\src\newgrf_sound.cpp" />
@@ -1382,6 +1393,7 @@
     <ClCompile Include="..\src\video\dedicated_v.cpp" />
     <ClCompile Include="..\src\video\null_v.cpp" />
     <ClCompile Include="..\src\video\sdl_v.cpp" />
+    <ClCompile Include="..\src\video\sdl2_v.cpp" />
     <ClCompile Include="..\src\video\win32_v.cpp" />
     <ClCompile Include="..\src\music\dmusic.cpp" />
     <ClCompile Include="..\src\music\null_m.cpp" />
@@ -1389,6 +1401,7 @@
     <ClCompile Include="..\src\music\win32_m.cpp" />
     <ClCompile Include="..\src\sound\null_s.cpp" />
     <ClCompile Include="..\src\sound\sdl_s.cpp" />
+    <ClCompile Include="..\src\sound\sdl2_s.cpp" />
     <ClCompile Include="..\src\sound\win32_s.cpp" />
     <ClCompile Include="..\src\sound\xaudio2_s.cpp" />
     <ClCompile Include="..\src\os\windows\crashlog_win.cpp" />

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -63,6 +61,7 @@ enum Currencies {
 	CURRENCY_NTD,       ///< New Taiwan Dollar
 	CURRENCY_CNY,       ///< Chinese Renminbi
 	CURRENCY_HKD,       ///< Hong Kong Dollar
+	CURRENCY_INR,       ///< Indian Rupee
 	CURRENCY_END,       ///< always the last item
 };
 

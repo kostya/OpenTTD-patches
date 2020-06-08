@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -128,6 +126,9 @@ static bool EngineIntroDateSorter(const EngineID &a, const EngineID &b)
 	return _engine_sort_direction ? r > 0 : r < 0;
 }
 
+/* cached values for EngineNameSorter to spare many GetString() calls */
+static EngineID _last_engine[2] = { INVALID_ENGINE, INVALID_ENGINE };
+
 /**
  * Determines order of engines by name
  * @param a first engine to compare
@@ -136,17 +137,16 @@ static bool EngineIntroDateSorter(const EngineID &a, const EngineID &b)
  */
 static bool EngineNameSorter(const EngineID &a, const EngineID &b)
 {
-	static EngineID last_engine[2] = { INVALID_ENGINE, INVALID_ENGINE };
-	static char     last_name[2][64] = { "\0", "\0" };
+	static char     last_name[2][64] = { "", "" };
 
-	if (a != last_engine[0]) {
-		last_engine[0] = a;
+	if (a != _last_engine[0]) {
+		_last_engine[0] = a;
 		SetDParam(0, a);
 		GetString(last_name[0], STR_ENGINE_NAME, lastof(last_name[0]));
 	}
 
-	if (b != last_engine[1]) {
-		last_engine[1] = b;
+	if (b != _last_engine[1]) {
+		_last_engine[1] = b;
 		SetDParam(0, b);
 		GetString(last_name[1], STR_ENGINE_NAME, lastof(last_name[1]));
 	}
@@ -270,20 +270,34 @@ static bool EnginePowerVsRunningCostSorter(const EngineID &a, const EngineID &b)
 {
 	const Engine *e_a = Engine::Get(a);
 	const Engine *e_b = Engine::Get(b);
-
-	/* Here we are using a few tricks to get the right sort.
-	 * We want power/running cost, but since we usually got higher running cost than power and we store the result in an int,
-	 * we will actually calculate cunning cost/power (to make it more than 1).
-	 * Because of this, the return value have to be reversed as well and we return b - a instead of a - b.
-	 * Another thing is that both power and running costs should be doubled for multiheaded engines.
-	 * Since it would be multiplying with 2 in both numerator and denominator, it will even themselves out and we skip checking for multiheaded. */
-	Money va = (e_a->GetRunningCost()) / max(1U, (uint)e_a->GetPower());
-	Money vb = (e_b->GetRunningCost()) / max(1U, (uint)e_b->GetPower());
-	int r = ClampToI32(vb - va);
-
-	/* Use EngineID to sort instead since we want consistent sorting */
-	if (r == 0) return EngineNumberSorter(a, b);
-	return _engine_sort_direction ? r > 0 : r < 0;
+	uint p_a = e_a->GetPower();
+	uint p_b = e_b->GetPower();
+	Money r_a = e_a->GetRunningCost();
+	Money r_b = e_b->GetRunningCost();
+	/* Check if running cost is zero in one or both engines.
+	 * If only one of them is zero then that one has higher value,
+	 * else if both have zero cost then compare powers. */
+	if (r_a == 0) {
+		if (r_b == 0) {
+			/* If it is ambiguous which to return go with their ID */
+			if (p_a == p_b) return EngineNumberSorter(a, b);
+			return _engine_sort_direction != (p_a < p_b);
+		}
+		return !_engine_sort_direction;
+	}
+	if (r_b == 0) return _engine_sort_direction;
+	/* Using double for more precision when comparing close values.
+	 * This shouldn't have any major effects in performance nor in keeping
+	 * the game in sync between players since it's used in GUI only in client side */
+	double v_a = (double)p_a / (double)r_a;
+	double v_b = (double)p_b / (double)r_b;
+	/* Use EngineID to sort if both have same power/running cost,
+	 * since we want consistent sorting.
+	 * Also if both have no power then sort with reverse of running cost to simulate
+	 * previous sorting behaviour for wagons. */
+	if (v_a == 0 && v_b == 0) return !EngineRunningCostSorter(a, b);
+	if (v_a == v_b)  return EngineNumberSorter(a, b);
+	return _engine_sort_direction != (v_a < v_b);
 }
 
 /* Train sorting functions */
@@ -917,6 +931,14 @@ int DrawVehiclePurchaseInfo(int left, int right, int y, EngineID engine_number, 
 	/* Additional text from NewGRF */
 	y = ShowAdditionalText(left, right, y, engine_number);
 
+	/* The NewGRF's name which the vehicle comes from */
+	const GRFConfig *config = GetGRFConfig(e->GetGRFID());
+	if (_settings_client.gui.show_newgrf_name && config != nullptr)
+	{
+		DrawString(left, right, y, config->GetName(), TC_BLACK);
+		y += FONT_HEIGHT_NORMAL;
+	}
+
 	return y;
 }
 
@@ -1258,8 +1280,7 @@ struct BuildVehicleWindow : Window {
 		 * Also check to see if the previously selected engine is still available,
 		 * and if not, reset selection to INVALID_ENGINE. This could be the case
 		 * when engines become obsolete and are removed */
-		const Engine *e;
-		FOR_ALL_ENGINES_OF_TYPE(e, VEH_TRAIN) {
+		for (const Engine *e : Engine::IterateType(VEH_TRAIN)) {
 			if (!this->show_hidden_engines && e->IsHidden(_local_company)) continue;
 			EngineID eid = e->index;
 			const RailVehicleInfo *rvi = &e->u.rail;
@@ -1283,6 +1304,9 @@ struct BuildVehicleWindow : Window {
 
 		this->SelectEngine(sel_id);
 
+		/* invalidate cached values for name sorter - engine names could change */
+		_last_engine[0] = _last_engine[1] = INVALID_ENGINE;
+
 		/* make engines first, and then wagons, sorted by selected sort_criteria */
 		_engine_sort_direction = false;
 		EngList_Sort(&this->eng_list, TrainEnginesThenWagonsSorter);
@@ -1302,8 +1326,7 @@ struct BuildVehicleWindow : Window {
 
 		this->eng_list.clear();
 
-		const Engine *e;
-		FOR_ALL_ENGINES_OF_TYPE(e, VEH_ROAD) {
+		for (const Engine *e : Engine::IterateType(VEH_ROAD)) {
 			if (!this->show_hidden_engines && e->IsHidden(_local_company)) continue;
 			EngineID eid = e->index;
 			if (!IsEngineBuildable(eid, VEH_ROAD, _local_company)) continue;
@@ -1322,8 +1345,7 @@ struct BuildVehicleWindow : Window {
 		EngineID sel_id = INVALID_ENGINE;
 		this->eng_list.clear();
 
-		const Engine *e;
-		FOR_ALL_ENGINES_OF_TYPE(e, VEH_SHIP) {
+		for (const Engine *e : Engine::IterateType(VEH_SHIP)) {
 			if (!this->show_hidden_engines && e->IsHidden(_local_company)) continue;
 			EngineID eid = e->index;
 			if (!IsEngineBuildable(eid, VEH_SHIP, _local_company)) continue;
@@ -1347,8 +1369,7 @@ struct BuildVehicleWindow : Window {
 		 * Also check to see if the previously selected plane is still available,
 		 * and if not, reset selection to INVALID_ENGINE. This could be the case
 		 * when planes become obsolete and are removed */
-		const Engine *e;
-		FOR_ALL_ENGINES_OF_TYPE(e, VEH_AIRCRAFT) {
+		for (const Engine *e : Engine::IterateType(VEH_AIRCRAFT)) {
 			if (!this->show_hidden_engines && e->IsHidden(_local_company)) continue;
 			EngineID eid = e->index;
 			if (!IsEngineBuildable(eid, VEH_AIRCRAFT, _local_company)) continue;

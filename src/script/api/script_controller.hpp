@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -127,6 +125,11 @@ public:
 	 *   be allowed to run.
 	 */
 	static int GetOpsTillSuspend();
+
+	/**
+	 * Decrease the number of operations the script can execute before being suspended.
+	 */
+	static void DecreaseOps(int amount);
 
 	/**
 	 * Get the value of one of your settings you set via info.nut.

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -40,6 +38,7 @@
 #include <SDL_syswm.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#include <X11/Xutil.h>
 #include <unistd.h>
 #endif
 
@@ -256,7 +255,9 @@ static void FcitxSYSWMEVENT(const SDL_SysWMEvent &event)
 	if (event.msg->subsystem != SDL_SYSWM_X11) return;
 	XEvent &xevent = event.msg->msg.x11.event;
 	if (xevent.type == KeyPress) {
-		KeySym keysym = XLookupKeysym(&xevent.xkey, 0);
+		char text[8];
+		KeySym keysym = 0;
+		XLookupString(&xevent.xkey, text, lengthof(text), &keysym, nullptr);
 		_fcitx_last_keycode = xevent.xkey.keycode;
 		_fcitx_last_keysym = keysym;
 	}
@@ -381,9 +382,7 @@ static void DrawSurfaceToScreen()
 	} else {
 		if (_sdl_surface != _sdl_realscreen) {
 			for (int i = 0; i < n; i++) {
-				SDL_BlitSurface(
-					_sdl_surface, &_dirty_rects[i],
-					_sdl_realscreen, &_dirty_rects[i]);
+				SDL_BlitSurface(_sdl_surface, &_dirty_rects[i], _sdl_realscreen, &_dirty_rects[i]);
 			}
 		}
 
@@ -517,7 +516,7 @@ bool VideoDriver_SDL::CreateMainSurface(uint w, uint h, bool resize)
 	_sdl_realscreen = newscreen;
 
 	if (bpp == 8) {
-		newscreen = SDL_CreateRGBSurfaceWithFormat(0, w, h, 8, SDL_PIXELFORMAT_INDEX8);
+		newscreen = SDL_CreateRGBSurface(0, w, h, 8, 0, 0, 0, 0);
 
 		if (newscreen == nullptr) {
 			DEBUG(driver, 0, "SDL2: Couldn't allocate shadow surface: %s", SDL_GetError());
@@ -611,6 +610,9 @@ static void SetTextInputRect()
 	SDL_SetTextInputRect(&winrect);
 }
 
+/**
+ * This is called to indicate that an edit box has gained focus, text input mode should be enabled.
+ */
 void VideoDriver_SDL::EditBoxGainedFocus()
 {
 	if (!this->edit_box_focused) {
@@ -620,6 +622,9 @@ void VideoDriver_SDL::EditBoxGainedFocus()
 	SetTextInputRect();
 }
 
+/**
+ * This is called to indicate that an edit box has lost focus, text input mode should be disabled.
+ */
 void VideoDriver_SDL::EditBoxLostFocus()
 {
 	if (this->edit_box_focused) {
@@ -640,39 +645,43 @@ struct VkMapping {
 	SDL_Keycode vk_from;
 	byte vk_count;
 	byte map_to;
+	bool unprintable;
 };
 
-#define AS(x, z) {x, 0, z}
-#define AM(x, y, z, w) {x, (byte)(y - x), z}
+#define AS(x, z) {x, 0, z, false}
+#define AM(x, y, z, w) {x, (byte)(y - x), z, false}
+#define AS_UP(x, z) {x, 0, z, true}
+#define AM_UP(x, y, z, w) {x, (byte)(y - x), z, true}
 
 static const VkMapping _vk_mapping[] = {
 	/* Pageup stuff + up/down */
-	AM(SDLK_PAGEUP, SDLK_PAGEDOWN, WKC_PAGEUP, WKC_PAGEDOWN),
-	AS(SDLK_UP,     WKC_UP),
-	AS(SDLK_DOWN,   WKC_DOWN),
-	AS(SDLK_LEFT,   WKC_LEFT),
-	AS(SDLK_RIGHT,  WKC_RIGHT),
+	AS_UP(SDLK_PAGEUP,   WKC_PAGEUP),
+	AS_UP(SDLK_PAGEDOWN, WKC_PAGEDOWN),
+	AS_UP(SDLK_UP,     WKC_UP),
+	AS_UP(SDLK_DOWN,   WKC_DOWN),
+	AS_UP(SDLK_LEFT,   WKC_LEFT),
+	AS_UP(SDLK_RIGHT,  WKC_RIGHT),
 
-	AS(SDLK_HOME,   WKC_HOME),
-	AS(SDLK_END,    WKC_END),
+	AS_UP(SDLK_HOME,   WKC_HOME),
+	AS_UP(SDLK_END,    WKC_END),
 
-	AS(SDLK_INSERT, WKC_INSERT),
-	AS(SDLK_DELETE, WKC_DELETE),
+	AS_UP(SDLK_INSERT, WKC_INSERT),
+	AS_UP(SDLK_DELETE, WKC_DELETE),
 
 	/* Map letters & digits */
 	AM(SDLK_a, SDLK_z, 'A', 'Z'),
 	AM(SDLK_0, SDLK_9, '0', '9'),
 
-	AS(SDLK_ESCAPE,    WKC_ESC),
-	AS(SDLK_PAUSE,     WKC_PAUSE),
-	AS(SDLK_BACKSPACE, WKC_BACKSPACE),
+	AS_UP(SDLK_ESCAPE,    WKC_ESC),
+	AS_UP(SDLK_PAUSE,     WKC_PAUSE),
+	AS_UP(SDLK_BACKSPACE, WKC_BACKSPACE),
 
 	AS(SDLK_SPACE,     WKC_SPACE),
 	AS(SDLK_RETURN,    WKC_RETURN),
 	AS(SDLK_TAB,       WKC_TAB),
 
 	/* Function keys */
-	AM(SDLK_F1, SDLK_F12, WKC_F1, WKC_F12),
+	AM_UP(SDLK_F1, SDLK_F12, WKC_F1, WKC_F12),
 
 	/* Numeric part. */
 	AM(SDLK_KP_0, SDLK_KP_9, '0', '9'),
@@ -701,27 +710,17 @@ static uint ConvertSdlKeyIntoMy(SDL_Keysym *sym, WChar *character)
 {
 	const VkMapping *map;
 	uint key = 0;
+	bool unprintable = false;
 
 	for (map = _vk_mapping; map != endof(_vk_mapping); ++map) {
 		if ((uint)(sym->sym - map->vk_from) <= map->vk_count) {
 			key = sym->sym - map->vk_from + map->map_to;
+			unprintable = map->unprintable;
 			break;
 		}
 	}
 
 	/* check scancode for BACKQUOTE key, because we want the key left of "1", not anything else (on non-US keyboards) */
-#if defined(_WIN32) || defined(__OS2__)
-	if (sym->scancode == 41) key = WKC_BACKQUOTE;
-#elif defined(__APPLE__)
-	if (sym->scancode == 10) key = WKC_BACKQUOTE;
-#elif defined(__SVR4) && defined(__sun)
-	if (sym->scancode == 60) key = WKC_BACKQUOTE;
-	if (sym->scancode == 49) key = WKC_BACKSPACE;
-#elif defined(__sgi__)
-	if (sym->scancode == 22) key = WKC_BACKQUOTE;
-#else
-	if (sym->scancode == 49) key = WKC_BACKQUOTE;
-#endif
 	if (sym->scancode == SDL_SCANCODE_GRAVE) key = WKC_BACKQUOTE;
 
 	/* META are the command keys on mac */
@@ -733,7 +732,8 @@ static uint ConvertSdlKeyIntoMy(SDL_Keysym *sym, WChar *character)
 	/* The mod keys have no character. Prevent '?' */
 	if (sym->mod & KMOD_GUI ||
 		sym->mod & KMOD_CTRL ||
-		sym->mod & KMOD_ALT) {
+		sym->mod & KMOD_ALT ||
+		unprintable) {
 		*character = WKC_NONE;
 	} else {
 		*character = sym->sym;
@@ -853,10 +853,15 @@ int VideoDriver_SDL::PollEvent()
 				uint keycode = ConvertSdlKeyIntoMy(&ev.key.keysym, &character);
 				// Only handle non-text keys here. Text is handled in
 				// SDL_TEXTINPUT below.
-				if (keycode == WKC_DELETE ||
+				if (!this->edit_box_focused ||
+					keycode == WKC_DELETE ||
 					keycode == WKC_NUM_ENTER ||
 					keycode == WKC_LEFT ||
 					keycode == WKC_RIGHT ||
+					keycode == WKC_UP ||
+					keycode == WKC_DOWN ||
+					keycode == WKC_HOME ||
+					keycode == WKC_END ||
 					keycode & WKC_META ||
 					keycode & WKC_CTRL ||
 					keycode & WKC_ALT ||
@@ -870,19 +875,19 @@ int VideoDriver_SDL::PollEvent()
 
 		case SDL_TEXTINPUT: {
 			if (_suppress_text_event) break;
-			if (EditBoxInGlobalFocus() && !(FocusedWindowIsConsole() &&
-					ConvertSdlKeycodeIntoMy(SDL_GetKeyFromName(ev.text.text)) == WKC_BACKQUOTE)) {
-				HandleTextInput(nullptr, true);
-				HandleTextInput(ev.text.text);
-				SetTextInputRect();
-				break;
-			}
-			WChar character;
+			if (!this->edit_box_focused) break;
 			SDL_Keycode kc = SDL_GetKeyFromName(ev.text.text);
 			uint keycode = ConvertSdlKeycodeIntoMy(kc);
 
-			Utf8Decode(&character, ev.text.text);
-			HandleKeypress(keycode, character);
+			if (keycode == WKC_BACKQUOTE && FocusedWindowIsConsole()) {
+				WChar character;
+				Utf8Decode(&character, ev.text.text);
+				HandleKeypress(keycode, character);
+			} else {
+				HandleTextInput(nullptr, true);
+				HandleTextInput(ev.text.text);
+				SetTextInputRect();
+			}
 			break;
 		}
 
@@ -935,7 +940,7 @@ int VideoDriver_SDL::PollEvent()
 	return -1;
 }
 
-const char *VideoDriver_SDL::Start(const char * const *parm)
+const char *VideoDriver_SDL::Start(const StringList &parm)
 {
 #if defined(WITH_FCITX)
 	FcitxInit();
@@ -960,12 +965,12 @@ const char *VideoDriver_SDL::Start(const char * const *parm)
 		return SDL_GetError();
 	}
 
-	const char *dname = SDL_GetVideoDriver(0);
+	const char *dname = SDL_GetCurrentVideoDriver();
 	DEBUG(driver, 1, "SDL2: using driver '%s'", dname);
 
 	MarkWholeScreenDirty();
 
-	_draw_threaded = GetDriverParam(parm, "no_threads") == nullptr && GetDriverParam(parm, "no_thread") == nullptr;
+	_draw_threaded = !GetDriverParamBool(parm, "no_threads") && !GetDriverParamBool(parm, "no_thread");
 
 	SDL_StopTextInput();
 	this->edit_box_focused = false;
@@ -1082,6 +1087,8 @@ void VideoDriver_SDL::MainLoop()
 			GameLoop();
 
 			if (_draw_mutex != nullptr) draw_lock.lock();
+
+			GameLoopPaletteAnimations();
 
 			UpdateWindows();
 			_local_palette = _cur_palette;

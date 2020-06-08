@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -949,6 +947,36 @@ uint ConvertDisplayToForceWeightRatio(double in)
 	return ConvertDisplayToWeightRatio(_units_force[_settings_game.locale.units_force], in);
 }
 
+uint ConvertCargoQuantityToDisplayQuantity(CargoID cargo, uint quantity)
+{
+	switch (CargoSpec::Get(cargo)->units_volume) {
+		case STR_TONS:
+			return _units_weight[_settings_game.locale.units_weight].c.ToDisplay(quantity);
+
+		case STR_LITERS:
+			return _units_volume[_settings_game.locale.units_volume].c.ToDisplay(quantity);
+
+		default:
+			break;
+	}
+	return quantity;
+}
+
+uint ConvertDisplayQuantityToCargoQuantity(CargoID cargo, uint quantity)
+{
+	switch (CargoSpec::Get(cargo)->units_volume) {
+		case STR_TONS:
+			return _units_weight[_settings_game.locale.units_weight].c.FromDisplay(quantity);
+
+		case STR_LITERS:
+			return _units_volume[_settings_game.locale.units_volume].c.FromDisplay(quantity);
+
+		default:
+			break;
+	}
+	return quantity;
+}
+
 /**
  * Parse most format codes within a string and write the result to a buffer.
  * @param buff    The buffer to write the final string to.
@@ -1519,8 +1547,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Company *c = Company::GetIfValid(args->GetInt32());
 				if (c == nullptr) break;
 
-				if (c->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)c->name};
+				if (!c->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)c->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1554,8 +1582,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				}
 
 				const Depot *d = Depot::Get(args->GetInt32());
-				if (d->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)d->name};
+				if (!d->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)d->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1570,8 +1598,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Engine *e = Engine::GetIfValid(args->GetInt32(SCC_ENGINE_NAME));
 				if (e == nullptr) break;
 
-				if (e->name != nullptr && e->IsEnabled()) {
-					int64 args_array[] = {(int64)(size_t)e->name};
+				if (!e->name.empty() && e->IsEnabled()) {
+					int64 args_array[] = {(int64)(size_t)e->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1585,8 +1613,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Group *g = Group::GetIfValid(args->GetInt32());
 				if (g == nullptr) break;
 
-				if (g->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)g->name};
+				if (!g->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)g->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1622,8 +1650,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Company *c = Company::GetIfValid(args->GetInt32(SCC_PRESIDENT_NAME));
 				if (c == nullptr) break;
 
-				if (c->president_name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)c->president_name};
+				if (!c->president_name.empty()) {
+					int64 args_array[] = {(int64)(size_t)c->president_name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1647,8 +1675,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 					break;
 				}
 
-				if (st->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)st->name};
+				if (!st->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)st->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1677,8 +1705,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Town *t = Town::GetIfValid(args->GetInt32(SCC_TOWN_NAME));
 				if (t == nullptr) break;
 
-				if (t->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)t->name};
+				if (!t->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)t->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1691,8 +1719,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				Waypoint *wp = Waypoint::GetIfValid(args->GetInt32(SCC_WAYPOINT_NAME));
 				if (wp == nullptr) break;
 
-				if (wp->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)wp->name};
+				if (!wp->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)wp->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1709,8 +1737,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Vehicle *v = Vehicle::GetIfValid(args->GetInt32(SCC_VEHICLE_NAME));
 				if (v == nullptr) break;
 
-				if (v->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)v->name};
+				if (!v->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)v->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {
@@ -1735,8 +1763,8 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				const Sign *si = Sign::GetIfValid(args->GetInt32());
 				if (si == nullptr) break;
 
-				if (si->name != nullptr) {
-					int64 args_array[] = {(int64)(size_t)si->name};
+				if (!si->name.empty()) {
+					int64 args_array[] = {(int64)(size_t)si->name.c_str()};
 					StringParameters tmp_params(args_array);
 					buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
 				} else {

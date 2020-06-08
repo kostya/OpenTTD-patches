@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -557,13 +555,15 @@ struct TreeListEnt : PalSpriteID {
 	byte x, y;
 };
 
-static void DrawTile_Trees(TileInfo *ti)
+static void DrawTile_Trees(TileInfo *ti, DrawTileProcParams params)
 {
-	switch (GetTreeGround(ti->tile)) {
-		case TREE_GROUND_SHORE: DrawShoreTile(ti->tileh); break;
-		case TREE_GROUND_GRASS: DrawClearLandTile(ti, GetTreeDensity(ti->tile)); break;
-		case TREE_GROUND_ROUGH: DrawHillyLandTile(ti); break;
-		default: DrawGroundSprite(_clear_land_sprites_snow_desert[GetTreeDensity(ti->tile)] + SlopeToSpriteOffset(ti->tileh), PAL_NONE); break;
+	if (!params.no_ground_tiles) {
+		switch (GetTreeGround(ti->tile)) {
+			case TREE_GROUND_SHORE: DrawShoreTile(ti->tileh); break;
+			case TREE_GROUND_GRASS: DrawClearLandTile(ti, GetTreeDensity(ti->tile)); break;
+			case TREE_GROUND_ROUGH: DrawHillyLandTile(ti); break;
+			default: DrawGroundSprite(_clear_land_sprites_snow_desert[GetTreeDensity(ti->tile)] + SlopeToSpriteOffset(ti->tileh), PAL_NONE); break;
+		}
 	}
 
 	/* Do not draw trees when the invisible trees setting is set */
@@ -729,6 +729,13 @@ static void TileLoopTreesAlps(TileIndex tile)
 	MarkTileDirtyByTile(tile, ZOOM_LVL_DRAW_MAP);
 }
 
+static bool CanPlantExtraTrees(TileIndex tile)
+{
+	return ((_settings_game.game_creation.landscape == LT_TROPIC && GetTropicZone(tile) == TROPICZONE_RAINFOREST) ?
+		_settings_game.construction.extra_tree_placement != ETP_NONE :
+		_settings_game.construction.extra_tree_placement == ETP_ALL);
+}
+
 static void TileLoop_Trees(TileIndex tile)
 {
 	if (GetTreeGround(tile) == TREE_GROUND_SHORE) {
@@ -788,12 +795,7 @@ static void TileLoop_Trees(TileIndex tile)
 						FALLTHROUGH;
 
 					case 2: { // add a neighbouring tree
-						/* Don't plant extra trees if that's not allowed. */
-						if ((_settings_game.game_creation.landscape == LT_TROPIC && GetTropicZone(tile) == TROPICZONE_RAINFOREST) ?
-								_settings_game.construction.extra_tree_placement == ETP_NONE :
-								_settings_game.construction.extra_tree_placement != ETP_ALL) {
-							break;
-						}
+						if (!CanPlantExtraTrees(tile)) break;
 
 						TreeType treetype = GetTreeType(tile);
 
@@ -821,6 +823,9 @@ static void TileLoop_Trees(TileIndex tile)
 				/* more than one tree, delete it */
 				AddTreeCount(tile, -1);
 				SetTreeGrowth(tile, 3);
+			} else if (!CanPlantExtraTrees(tile)) {
+				/* if trees can't spread just plant a new one to prevent deforestation */
+				SetTreeGrowth(tile, 0);
 			} else {
 				/* just one tree, change type into MP_CLEAR */
 				switch (GetTreeGround(tile)) {

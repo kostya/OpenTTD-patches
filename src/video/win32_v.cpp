@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -1117,7 +1115,7 @@ static void FindResolutions()
 
 static FVideoDriver_Win32 iFVideoDriver_Win32;
 
-const char *VideoDriver_Win32::Start(const char * const *parm)
+const char *VideoDriver_Win32::Start(const StringList &parm)
 {
 	memset(&_wnd, 0, sizeof(_wnd));
 
@@ -1138,7 +1136,7 @@ const char *VideoDriver_Win32::Start(const char * const *parm)
 
 	MarkWholeScreenDirty();
 
-	_draw_threaded = GetDriverParam(parm, "no_threads") == nullptr && GetDriverParam(parm, "no_thread") == nullptr && std::thread::hardware_concurrency() > 1;
+	_draw_threaded = !GetDriverParamBool(parm, "no_threads") && !GetDriverParamBool(parm, "no_thread") && std::thread::hardware_concurrency() > 1;
 
 	return nullptr;
 }
@@ -1270,6 +1268,7 @@ void VideoDriver_Win32::MainLoop()
 			if (_draw_threaded) draw_lock.unlock();
 			GameLoop();
 			if (_draw_threaded) draw_lock.lock();
+			GameLoopPaletteAnimations();
 
 			if (_force_full_redraw) MarkWholeScreenDirty();
 

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -161,7 +159,7 @@ struct CFollowTrackT
 
 			return false;
 		}
-		if (m_tiles_skipped == 0 && ((!IsRailTT() && !Allow90degTurns()) || (IsRailTT() && Rail90DegTurnDisallowedTilesFromDiagDir(m_old_tile, m_new_tile, m_exitdir), !Allow90degTurns()))) {
+		if (m_tiles_skipped == 0 && ((!IsRailTT() && !Allow90degTurns()) || (IsRailTT() && Rail90DegTurnDisallowedTilesFromDiagDir(m_old_tile, m_new_tile, m_exitdir, !Allow90degTurns())))) {
 			m_new_td_bits &= (TrackdirBits)~(int)TrackdirCrossesTrackdirs(m_old_td);
 			if (m_new_td_bits == TRACKDIR_BIT_NONE) {
 				m_err = EC_90DEG;

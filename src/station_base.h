@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -74,7 +72,7 @@ public:
 	/**
 	 * Invalid constructor. This can't be called as a FlowStat must not be
 	 * empty. However, the constructor must be defined and reachable for
-	 * FlwoStat to be used in a std::map.
+	 * FlowStat to be used in a std::map.
 	 */
 	inline FlowStat() {NOT_REACHED();}
 
@@ -93,6 +91,7 @@ public:
 		this->unrestricted = restricted ? 0 : flow;
 		this->count = 1;
 		this->origin = origin;
+		this->flags = 0;
 	}
 
 private:
@@ -117,6 +116,7 @@ private:
 			free(this->storage.ptr_shares.buffer);
 		}
 		this->count = 0;
+		this->flags = 0;
 	}
 
 	iterator erase_item(iterator iter, uint flow_reduction);
@@ -131,6 +131,7 @@ private:
 		MemCpyT(this->data(), other.data(), this->count);
 		this->unrestricted = other.unrestricted;
 		this->origin = other.origin;
+		this->flags = other.flags;
 	}
 
 public:
@@ -234,6 +235,7 @@ public:
 		std::swap(this->storage, other.storage);
 		std::swap(this->unrestricted, other.unrestricted);
 		std::swap(this->count, other.count);
+		std::swap(this->flags, other.flags);
 	}
 
 	/**
@@ -269,11 +271,37 @@ public:
 
 	StationID GetVia(StationID excluded, StationID excluded2 = INVALID_STATION) const;
 
-	void Invalidate();
+	/**
+	 * Mark this flow stat as invalid, such that it is not included in link statistics.
+	 * @return True if the flow stat should be deleted.
+	 */
+	inline bool Invalidate()
+	{
+		if ((this->flags & 0x1F) == 0x1F) return true;
+		this->flags++;
+		return false;
+	}
 
 	inline StationID GetOrigin() const
 	{
 		return this->origin;
+	}
+
+	inline bool IsInvalid() const
+	{
+		return (this->flags & 0x1F) != 0;
+	}
+
+	/* for save/load use only */
+	inline uint16 GetRawFlags() const
+	{
+		return this->flags;
+	}
+
+	/* for save/load use only */
+	inline void SetRawFlags(uint16 flags)
+	{
+		this->flags = flags;;
 	}
 
 private:
@@ -302,10 +330,11 @@ private:
 	uint unrestricted; ///< Limit for unrestricted shares.
 	uint16 count;
 	StationID origin;
+	uint16 flags;
 };
 static_assert(std::is_nothrow_move_constructible<FlowStat>::value, "FlowStat must be nothrow move constructible");
 #if OTTD_ALIGNMENT == 0 && (defined(__GNUC__) || defined(__clang__))
-static_assert(sizeof(FlowStat) == 20, "");
+static_assert(sizeof(FlowStat) == 24, "");
 #endif
 
 template<typename cv_value, typename cv_container, typename cv_index_iter>
@@ -326,6 +355,8 @@ public:
 
 	FlowStatMapIterator(const FlowStatMapIterator<FlowStat, FlowStatMap, btree::btree_map<StationID, uint16>::iterator> &other) :
 		fsm(other.fsm), current(other.current) {}
+
+	FlowStatMapIterator &operator=(const FlowStatMapIterator &) = default;
 
 	reference operator*() const { return this->fsm->flows_storage[this->current->second]; }
 	pointer operator->() const { return &(this->fsm->flows_storage[this->current->second]); }
@@ -397,7 +428,12 @@ public:
 
 	bool empty() const
 	{
-		return this->flows_index.empty();
+		return this->flows_storage.empty();
+	}
+
+	size_t size() const
+	{
+		return this->flows_storage.size();
 	}
 
 	void erase(StationID st)
@@ -485,6 +521,11 @@ struct GoodsEntry {
 		 * This flag is reset every STATION_ACCEPTANCE_TICKS ticks.
 		 */
 		GES_ACCEPTED_BIGTICK,
+
+		/**
+		 * Set when cargo is not permitted to be supplied by nearby industries/houses.
+		 */
+		GES_NO_CARGO_SUPPLY = 7,
 	};
 
 	GoodsEntry() :
@@ -537,6 +578,11 @@ struct GoodsEntry {
 	NodeID node;            ///< ID of node in link graph referring to this goods entry.
 	FlowStatMap flows;      ///< Planned flows through this station.
 	uint max_waiting_cargo; ///< Max cargo from this station waiting at any station.
+
+	bool IsSupplyAllowed() const
+	{
+		return !HasBit(this->status, GES_NO_CARGO_SUPPLY);
+	}
 
 	/**
 	 * Reports whether a vehicle has ever tried to load the cargo at this station.
@@ -748,6 +794,7 @@ public:
 	IndustryType indtype;   ///< Industry type to get the name from
 
 	BitmapTileArea catchment_tiles; ///< NOSAVE: Set of individual tiles covered by catchment area
+	uint station_tiles;             ///< NOSAVE: Count of station tiles owned by this station
 
 	StationHadVehicleOfType had_vehicle_of_type;
 
@@ -787,6 +834,7 @@ public:
 	}
 
 	bool CatchmentCoversTown(TownID t) const;
+	void AddIndustryToDeliver(Industry *ind);
 	void RemoveFromAllNearbyLists();
 
 	inline bool TileIsInCatchment(TileIndex tile) const
@@ -810,8 +858,6 @@ public:
 
 	void GetTileArea(TileArea *ta, StationType type) const override;
 };
-
-#define FOR_ALL_STATIONS(var) FOR_ALL_BASE_STATIONS_OF_TYPE(Station, var)
 
 /** Iterator to iterate over all tiles belonging to an airport. */
 class AirportTileIterator : public OrthogonalTileIterator {
@@ -844,5 +890,43 @@ public:
 };
 
 void RebuildStationKdtree();
+
+/**
+ * Call a function on all stations that have any part of the requested area within their catchment.
+ * @tparam Func The type of funcion to call
+ * @param area The TileArea to check
+ * @param func The function to call, must take two parameters: Station* and TileIndex and return true
+ *             if coverage of that tile is acceptable for a given station or false if search should continue
+ */
+template<typename Func>
+void ForAllStationsAroundTiles(const TileArea &ta, Func func)
+{
+	/* Not using, or don't have a nearby stations list, so we need to scan. */
+	btree::btree_set<StationID> seen_stations;
+
+	/* Scan an area around the building covering the maximum possible station
+	 * to find the possible nearby stations. */
+	uint max_c = _settings_game.station.modified_catchment ? MAX_CATCHMENT : CA_UNMODIFIED;
+	max_c += _settings_game.station.catchment_increase;
+	TileArea ta_ext = TileArea(ta).Expand(max_c);
+	TILE_AREA_LOOP(tile, ta_ext) {
+		if (IsTileType(tile, MP_STATION)) seen_stations.insert(GetStationIndex(tile));
+	}
+
+	for (StationID stationid : seen_stations) {
+		Station *st = Station::GetIfValid(stationid);
+		if (st == nullptr) continue; /* Waypoint */
+
+		/* Check if station is attached to an industry */
+		if (!_settings_game.station.serve_neutral_industries && st->industry != nullptr) continue;
+
+		/* Test if the tile is within the station's catchment */
+		TILE_AREA_LOOP(tile, ta) {
+			if (st->TileIsInCatchment(tile)) {
+				if (func(st, tile)) break;
+			}
+		}
+	}
+}
 
 #endif /* STATION_BASE_H */

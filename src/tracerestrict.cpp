@@ -648,6 +648,12 @@ void TraceRestrictProgram::Execute(const Train* v, const TraceRestrictProgramInp
 						}
 						break;
 
+					case TRIT_SPEED_RESTRICTION: {
+						out.speed_restriction = GetTraceRestrictValue(item);
+						out.flags |= TRPRF_SPEED_RETRICTION_SET;
+						break;
+					}
+
 					default:
 						NOT_REACHED();
 				}
@@ -816,6 +822,10 @@ CommandCost TraceRestrictProgram::Validate(const std::vector<TraceRestrictItem> 
 
 				case TRIT_REVERSE:
 					actions_used_flags |= TRPAUF_REVERSE;
+					break;
+
+				case TRIT_SPEED_RESTRICTION:
+					actions_used_flags |= TRPAUF_SPEED_RESTRICTION;
 					break;
 
 				default:
@@ -1552,9 +1562,7 @@ CommandCost CmdProgramSignalTraceRestrictProgMgmt(TileIndex tile, DoCommandFlag 
  */
 void TraceRestrictRemoveDestinationID(TraceRestrictOrderCondAuxField type, uint16 index)
 {
-	TraceRestrictProgram *prog;
-
-	FOR_ALL_TRACE_RESTRICT_PROGRAMS(prog) {
+	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		for (size_t i = 0; i < prog->items.size(); i++) {
 			TraceRestrictItem &item = prog->items[i]; // note this is a reference,
 			if (GetTraceRestrictType(item) == TRIT_COND_CURRENT_ORDER ||
@@ -1578,9 +1586,7 @@ void TraceRestrictRemoveDestinationID(TraceRestrictOrderCondAuxField type, uint1
  */
 void TraceRestrictRemoveGroupID(GroupID index)
 {
-	TraceRestrictProgram *prog;
-
-	FOR_ALL_TRACE_RESTRICT_PROGRAMS(prog) {
+	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		for (size_t i = 0; i < prog->items.size(); i++) {
 			TraceRestrictItem &item = prog->items[i]; // note this is a reference,
 			if (GetTraceRestrictType(item) == TRIT_COND_TRAIN_GROUP && GetTraceRestrictValue(item) == index) {
@@ -1601,9 +1607,7 @@ void TraceRestrictRemoveGroupID(GroupID index)
  */
 void TraceRestrictUpdateCompanyID(CompanyID old_company, CompanyID new_company)
 {
-	TraceRestrictProgram *prog;
-
-	FOR_ALL_TRACE_RESTRICT_PROGRAMS(prog) {
+	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		for (size_t i = 0; i < prog->items.size(); i++) {
 			TraceRestrictItem &item = prog->items[i]; // note this is a reference,
 			if (GetTraceRestrictType(item) == TRIT_COND_TRAIN_OWNER) {
@@ -1615,8 +1619,7 @@ void TraceRestrictUpdateCompanyID(CompanyID old_company, CompanyID new_company)
 		}
 	}
 
-	TraceRestrictSlot *slot;
-	FOR_ALL_TRACE_RESTRICT_SLOTS(slot) {
+	for (TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
 		if (slot->owner != old_company) continue;
 		if (new_company == INVALID_OWNER) {
 			TraceRestrictRemoveSlotID(slot->index);
@@ -1707,8 +1710,7 @@ void TraceRestrictSlot::DeIndex(VehicleID id)
 void TraceRestrictSlot::RebuildVehicleIndex()
 {
 	slot_vehicle_index.clear();
-	const TraceRestrictSlot *slot;
-	FOR_ALL_TRACE_RESTRICT_SLOTS(slot) {
+	for (const TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
 		for (VehicleID id : slot->occupants) {
 			slot_vehicle_index.emplace(id, slot->index);
 		}
@@ -1733,8 +1735,7 @@ void TraceRestrictSlot::ValidateSlotOccupants(std::function<void(const char *)> 
 	if (log) log(cclog_buffer); \
 }
 
-	const TraceRestrictSlot *slot;
-	FOR_ALL_TRACE_RESTRICT_SLOTS(slot) {
+	for (const TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
 		for (VehicleID id : slot->occupants) {
 			const Train  *t = Train::GetIfValid(id);
 			if (t) {
@@ -1808,9 +1809,7 @@ void TraceRestrictGetVehicleSlots(VehicleID id, std::vector<TraceRestrictSlotID>
  */
 void TraceRestrictRemoveSlotID(TraceRestrictSlotID index)
 {
-	TraceRestrictProgram *prog;
-
-	FOR_ALL_TRACE_RESTRICT_PROGRAMS(prog) {
+	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		for (size_t i = 0; i < prog->items.size(); i++) {
 			TraceRestrictItem &item = prog->items[i]; // note this is a reference,
 			if ((GetTraceRestrictType(item) == TRIT_SLOT || GetTraceRestrictType(item) == TRIT_COND_TRAIN_IN_SLOT) && GetTraceRestrictValue(item) == index) {
@@ -1824,8 +1823,7 @@ void TraceRestrictRemoveSlotID(TraceRestrictSlotID index)
 	}
 
 	bool changed_order = false;
-	Order *o;
-	FOR_ALL_ORDERS(o) {
+	for (Order *o : Order::Iterate()) {
 		if (o->IsType(OT_CONDITIONAL) &&
 				(o->GetConditionVariable() == OCV_SLOT_OCCUPANCY || o->GetConditionVariable() == OCV_TRAIN_IN_SLOT) &&
 				o->GetXData() == index) {
@@ -1844,8 +1842,7 @@ void TraceRestrictRemoveSlotID(TraceRestrictSlotID index)
 
 static bool IsUniqueSlotName(const char *name)
 {
-	const TraceRestrictSlot *slot;
-	FOR_ALL_TRACE_RESTRICT_SLOTS(slot) {
+	for (const TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
 		if (slot->name == name) return false;
 	}
 	return true;

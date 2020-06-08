@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -128,7 +126,7 @@ static StreamingVoiceContext* _voice_context = nullptr;
 * @return An error message if unsuccessful, or nullptr otherwise.
 *
 */
-const char *SoundDriver_XAudio2::Start(const char * const *parm)
+const char *SoundDriver_XAudio2::Start(const StringList &parm)
 {
 	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 

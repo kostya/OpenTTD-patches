@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -1076,7 +1074,7 @@ static const char *LoadDefaultDLSFile(const char *user_dls)
 }
 
 
-const char *MusicDriver_DMusic::Start(const char * const *parm)
+const char *MusicDriver_DMusic::Start(const StringList &parm)
 {
 	/* Initialize COM */
 	if (FAILED(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED))) return "COM initialization failed";

@@ -82,6 +82,7 @@ rail.cpp
 rev.cpp
 road.cpp
 roadstop.cpp
+screenshot_gui.cpp
 screenshot.cpp
 settings.cpp
 signal.cpp
@@ -289,6 +290,7 @@ newgrf_house.h
 newgrf_industries.h
 newgrf_industrytiles.h
 newgrf_object.h
+newgrf_profiling.h
 newgrf_properties.h
 newgrf_railtype.h
 newgrf_roadtype.h
@@ -337,6 +339,7 @@ roadveh.h
 safeguards.h
 scope.h
 screenshot.h
+screenshot_gui.h
 sound/sdl_s.h
 video/sdl_v.h
 video/sdl2_v.h
@@ -445,7 +448,6 @@ zoning.h
 	music/extmidi.h
 	music/fluidsynth.h
 	music/os2_m.h
-	music/qtmidi.h
 	os/macosx/macos.h
 	os/macosx/osx_stdafx.h
 	os/macosx/splash.h
@@ -487,6 +489,7 @@ core/smallmatrix_type.hpp
 core/smallstack_type.hpp
 core/smallvec_type.hpp
 core/string_compare_type.hpp
+core/tinystring_type.hpp
 
 # GUI Source Code
 aircraft_gui.cpp
@@ -597,6 +600,7 @@ widgets/osk_widget.h
 widgets/plans_widget.h
 widgets/rail_widget.h
 widgets/road_widget.h
+widgets/screenshot_widget.h
 widgets/settings_widget.h
 widgets/sign_widget.h
 widgets/smallmap_widget.h
@@ -744,6 +748,10 @@ table/water_land.h
 3rdparty/md5/md5.cpp
 3rdparty/md5/md5.h
 
+# Compat
+3rdparty/optional/optional.hpp
+3rdparty/optional/ottd_optional.h
+
 # Script
 script/script_config.cpp
 script/script_config.hpp
@@ -879,6 +887,7 @@ script/api/script_marine.hpp
 script/api/script_news.hpp
 script/api/script_object.hpp
 script/api/script_order.hpp
+script/api/script_priorityqueue.hpp
 script/api/script_rail.hpp
 script/api/script_railtypelist.hpp
 script/api/script_road.hpp
@@ -948,6 +957,7 @@ script/api/script_marine.cpp
 script/api/script_news.cpp
 script/api/script_object.cpp
 script/api/script_order.cpp
+script/api/script_priorityqueue.cpp
 script/api/script_rail.cpp
 script/api/script_railtypelist.cpp
 script/api/script_road.cpp
@@ -1039,6 +1049,7 @@ newgrf_house.cpp
 newgrf_industries.cpp
 newgrf_industrytiles.cpp
 newgrf_object.cpp
+newgrf_profiling.cpp
 newgrf_railtype.cpp
 newgrf_roadtype.cpp
 newgrf_sound.cpp
@@ -1215,17 +1226,10 @@ sound/null_s.cpp
 # OSX Files
 	os/macosx/macos.mm
 
-	#if DEDICATED
-	#else
-		music/qtmidi.cpp
-	#end
-
 	#if COCOA
 		video/cocoa/cocoa_v.mm
 		video/cocoa/event.mm
-		video/cocoa/fullscreen.mm
 		video/cocoa/wnd_quartz.mm
-		video/cocoa/wnd_quickdraw.mm
 		music/cocoa_m.cpp
 		sound/cocoa_s.cpp
 		os/macosx/splash.cpp

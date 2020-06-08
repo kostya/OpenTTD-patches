@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -124,6 +122,9 @@ protected:
 	char *LogCommandLog(char *buffer, const char *last) const;
 
 public:
+	/** Buffer for the filename name prefix */
+	char name_buffer[64];
+
 	/** Stub destructor to silence some compilers. */
 	virtual ~CrashLog() {}
 
@@ -145,7 +146,7 @@ public:
 	bool WriteSavegame(char *filename, const char *filename_last, const char *name = "crash") const;
 	bool WriteScreenshot(char *filename, const char *filename_last, const char *name = "crash") const;
 
-	bool MakeCrashLog() const;
+	bool MakeCrashLog();
 	bool MakeDesyncCrashLog(const std::string *log_in, std::string *log_out, const DesyncExtraInfo &info) const;
 	bool MakeVersionInfoLog() const;
 	bool MakeCrashSavegameAndScreenshot() const;

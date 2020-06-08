@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -23,6 +21,7 @@
 #include "textfile_gui.h"
 #include "thread.h"
 #include "newgrf_config.h"
+#include "newgrf_text.h"
 
 #include "fileio_func.h"
 #include "fios.h"
@@ -37,17 +36,6 @@
 
 #include "safeguards.h"
 
-/** Create a new GRFTextWrapper. */
-GRFTextWrapper::GRFTextWrapper() :
-	text(nullptr)
-{
-}
-
-/** Cleanup a GRFTextWrapper object. */
-GRFTextWrapper::~GRFTextWrapper()
-{
-	CleanUpGRFText(this->text);
-}
 
 /**
  * Create a new GRFConfig.
@@ -55,15 +43,9 @@ GRFTextWrapper::~GRFTextWrapper()
  *   is copied so the original string isn't needed after the constructor.
  */
 GRFConfig::GRFConfig(const char *filename) :
-	name(new GRFTextWrapper()),
-	info(new GRFTextWrapper()),
-	url(new GRFTextWrapper()),
 	num_valid_params(lengthof(param))
 {
 	if (filename != nullptr) this->filename = stredup(filename);
-	this->name->AddRef();
-	this->info->AddRef();
-	this->url->AddRef();
 }
 
 /**
@@ -89,9 +71,6 @@ GRFConfig::GRFConfig(const GRFConfig &config) :
 	MemCpyT<uint8>(this->original_md5sum, config.original_md5sum, lengthof(this->original_md5sum));
 	MemCpyT<uint32>(this->param, config.param, lengthof(this->param));
 	if (config.filename != nullptr) this->filename = stredup(config.filename);
-	this->name->AddRef();
-	this->info->AddRef();
-	this->url->AddRef();
 	if (config.error != nullptr) this->error = new GRFError(*config.error);
 	for (uint i = 0; i < config.param_info.size(); i++) {
 		if (config.param_info[i] == nullptr) {
@@ -110,9 +89,7 @@ GRFConfig::~GRFConfig()
 		free(this->filename);
 		delete this->error;
 	}
-	this->name->Release();
-	this->info->Release();
-	this->url->Release();
+	free(this->full_filename);
 
 	for (uint i = 0; i < this->param_info.size(); i++) delete this->param_info[i];
 }
@@ -135,7 +112,7 @@ void GRFConfig::CopyParams(const GRFConfig &src)
  */
 const char *GRFConfig::GetName() const
 {
-	const char *name = GetGRFStringFromGRFText(this->name->text);
+	const char *name = GetGRFStringFromGRFText(this->name);
 	return StrEmpty(name) ? this->filename : name;
 }
 
@@ -145,7 +122,7 @@ const char *GRFConfig::GetName() const
  */
 const char *GRFConfig::GetDescription() const
 {
-	return GetGRFStringFromGRFText(this->info->text);
+	return GetGRFStringFromGRFText(this->info);
 }
 
 /**
@@ -154,7 +131,7 @@ const char *GRFConfig::GetDescription() const
  */
 const char *GRFConfig::GetURL() const
 {
-	return GetGRFStringFromGRFText(this->url->text);
+	return GetGRFStringFromGRFText(this->url);
 }
 
 /** Set the default value for all parameters as specified by action14. */
@@ -213,7 +190,8 @@ bool _grf_bug_too_many_strings = false;
  */
 GRFError::GRFError(StringID severity, StringID message) :
 	message(message),
-	severity(severity)
+	severity(severity),
+	param_value()
 {
 }
 
@@ -222,21 +200,12 @@ GRFError::GRFError(StringID severity, StringID message) :
  * @param error The GRFError object to make a copy of.
  */
 GRFError::GRFError(const GRFError &error) :
-	ZeroedMemoryAllocator(),
 	custom_message(error.custom_message),
 	data(error.data),
 	message(error.message),
 	severity(error.severity)
 {
-	if (error.custom_message != nullptr) this->custom_message = stredup(error.custom_message);
-	if (error.data           != nullptr) this->data           = stredup(error.data);
 	memcpy(this->param_value, error.param_value, sizeof(this->param_value));
-}
-
-GRFError::~GRFError()
-{
-	free(this->custom_message);
-	free(this->data);
 }
 
 /**
@@ -244,8 +213,8 @@ GRFError::~GRFError()
  * @param nr The newgrf parameter that is changed.
  */
 GRFParameterInfo::GRFParameterInfo(uint nr) :
-	name(nullptr),
-	desc(nullptr),
+	name(),
+	desc(),
 	type(PTYPE_UINT_ENUM),
 	min_value(0),
 	max_value(UINT32_MAX),
@@ -253,6 +222,7 @@ GRFParameterInfo::GRFParameterInfo(uint nr) :
 	param_nr(nr),
 	first_bit(0),
 	num_bit(32),
+	value_names(),
 	complete_labels(false)
 {}
 
@@ -262,8 +232,8 @@ GRFParameterInfo::GRFParameterInfo(uint nr) :
  * @param info The GRFParameterInfo object to make a copy of.
  */
 GRFParameterInfo::GRFParameterInfo(GRFParameterInfo &info) :
-	name(DuplicateGRFText(info.name)),
-	desc(DuplicateGRFText(info.desc)),
+	name(info.name),
+	desc(info.desc),
 	type(info.type),
 	min_value(info.min_value),
 	max_value(info.max_value),
@@ -271,23 +241,9 @@ GRFParameterInfo::GRFParameterInfo(GRFParameterInfo &info) :
 	param_nr(info.param_nr),
 	first_bit(info.first_bit),
 	num_bit(info.num_bit),
+	value_names(info.value_names),
 	complete_labels(info.complete_labels)
 {
-	for (uint i = 0; i < info.value_names.size(); i++) {
-		SmallPair<uint32, GRFText *> *data = info.value_names.data() + i;
-		this->value_names.Insert(data->first, DuplicateGRFText(data->second));
-	}
-}
-
-/** Cleanup all parameter info. */
-GRFParameterInfo::~GRFParameterInfo()
-{
-	CleanUpGRFText(this->name);
-	CleanUpGRFText(this->desc);
-	for (uint i = 0; i < this->value_names.size(); i++) {
-		SmallPair<uint32, GRFText *> *data = this->value_names.data() + i;
-		CleanUpGRFText(data->second);
-	}
 }
 
 /**
@@ -660,7 +616,7 @@ GRFListCompatibility IsGoodGRFConfigList(GRFConfig *grfconfig)
 			f = FindGRFConfig(c->ident.grfid, FGCM_COMPATIBLE, nullptr, c->version);
 			if (f != nullptr) {
 				md5sumToString(buf, lastof(buf), c->ident.md5sum);
-				DEBUG(grf, 1, "NewGRF %08X (%s) not found; checksum %s. Compatibility mode on", BSWAP32(c->ident.grfid), c->filename, buf);
+				DEBUG(grf, 1, "NewGRF %08X (%s) not found; checksum %s. Compatibility mode on", BSWAP32(c->ident.grfid), c->GetDisplayPath(), buf);
 				if (!HasBit(c->flags, GCF_COMPATIBLE)) {
 					/* Preserve original_md5sum after it has been assigned */
 					SetBit(c->flags, GCF_COMPATIBLE);
@@ -674,13 +630,13 @@ GRFListCompatibility IsGoodGRFConfigList(GRFConfig *grfconfig)
 
 			/* No compatible grf was found, mark it as disabled */
 			md5sumToString(buf, lastof(buf), c->ident.md5sum);
-			DEBUG(grf, 0, "NewGRF %08X (%s) not found; checksum %s", BSWAP32(c->ident.grfid), c->filename, buf);
+			DEBUG(grf, 0, "NewGRF %08X (%s) not found; checksum %s", BSWAP32(c->ident.grfid), c->GetDisplayPath(), buf);
 
 			c->status = GCS_NOT_FOUND;
 			res = GLC_NOT_FOUND;
 		} else {
 compatible_grf:
-			DEBUG(grf, 1, "Loading GRF %08X from %s", BSWAP32(f->ident.grfid), f->filename);
+			DEBUG(grf, 1, "Loading GRF %08X from %s", BSWAP32(f->ident.grfid), f->GetDisplayPath());
 			/* The filename could be the filename as in the savegame. As we need
 			 * to load the GRF here, we need the correct filename, so overwrite that
 			 * in any case and set the name and info when it is not set already.
@@ -690,12 +646,8 @@ compatible_grf:
 				free(c->filename);
 				c->filename = stredup(f->filename);
 				memcpy(c->ident.md5sum, f->ident.md5sum, sizeof(c->ident.md5sum));
-				c->name->Release();
 				c->name = f->name;
-				c->name->AddRef();
-				c->info->Release();
 				c->info = f->name;
-				c->info->AddRef();
 				c->error = nullptr;
 				c->version = f->version;
 				c->min_loadable_version = f->min_loadable_version;
@@ -722,8 +674,13 @@ class GRFFileScanner : FileScanner {
 	std::vector<GRFConfig *> grfs;
 
 public:
-	GRFFileScanner() : next_update(_realtime_tick), num_scanned(0)
+	GRFFileScanner() : num_scanned(0)
 	{
+#if defined(__GNUC__) || defined(__clang__)
+		this->next_update = __atomic_load_n(&_realtime_tick, __ATOMIC_RELAXED);
+#else
+		this->next_update = _realtime_tick;
+#endif
 	}
 
 	bool AddFile(const char *filename, size_t basepath_length, const char *tar_filename) override;
@@ -781,26 +738,33 @@ bool GRFFileScanner::AddFile(const char *filename, size_t basepath_length, const
 	bool added = FillGRFDetails(c, false);
 	if (added) {
 		this->grfs.push_back(c);
-	} else {
-		/* File couldn't be opened, or is either not a NewGRF or is a
-		 * 'system' NewGRF or it's already known, so forget about it. */
-		delete c;
 	}
 
 	this->num_scanned++;
-	if (this->next_update <= _realtime_tick) {
+#if defined(__GNUC__) || defined(__clang__)
+	const uint32 now = __atomic_load_n(&_realtime_tick, __ATOMIC_RELAXED);
+#else
+	const uint32 now = _realtime_tick;
+#endif
+	if (this->next_update <= now) {
 		_modal_progress_work_mutex.unlock();
 		_modal_progress_paint_mutex.lock();
 
 		const char *name = nullptr;
-		if (c->name != nullptr) name = GetGRFStringFromGRFText(c->name->text);
+		if (c->name != nullptr) name = GetGRFStringFromGRFText(c->name);
 		if (name == nullptr) name = c->filename;
 		UpdateNewGRFScanStatus(this->num_scanned, name);
 
 		_modal_progress_work_mutex.lock();
 		_modal_progress_paint_mutex.unlock();
 
-		this->next_update = _realtime_tick + MODAL_PROGRESS_REDRAW_TIMEOUT;
+		this->next_update = now + MODAL_PROGRESS_REDRAW_TIMEOUT;
+	}
+
+	if (!added) {
+		/* File couldn't be opened, or is either not a NewGRF or is a
+		 * 'system' NewGRF or it's already known, so forget about it. */
+		delete c;
 	}
 
 	return added;
@@ -921,8 +885,12 @@ const GRFConfig *FindGRFConfig(uint32 grfid, FindGRFConfigMode mode, const uint8
 
 /** Structure for UnknownGRFs; this is a lightweight variant of GRFConfig */
 struct UnknownGRF : public GRFIdentifier {
-	UnknownGRF *next;     ///< The next unknown GRF.
-	GRFTextWrapper *name; ///< Name of the GRF.
+	GRFTextWrapper name; ///< Name of the GRF.
+
+	UnknownGRF() = default;
+	UnknownGRF(const UnknownGRF &other) = default;
+	UnknownGRF(UnknownGRF &&other) = default;
+	UnknownGRF(uint32 grfid, const uint8 *_md5sum) : GRFIdentifier(grfid, _md5sum), name(new GRFTextList) {}
 };
 
 /**
@@ -942,30 +910,24 @@ struct UnknownGRF : public GRFIdentifier {
  *         and MD5 checksum or nullptr when it does not exist and create is false.
  *         This value must NEVER be freed by the caller.
  */
-GRFTextWrapper *FindUnknownGRFName(uint32 grfid, uint8 *md5sum, bool create)
+GRFTextWrapper FindUnknownGRFName(uint32 grfid, uint8 *md5sum, bool create)
 {
-	UnknownGRF *grf;
-	static UnknownGRF *unknown_grfs = nullptr;
+	static std::vector<UnknownGRF> unknown_grfs;
 
-	for (grf = unknown_grfs; grf != nullptr; grf = grf->next) {
-		if (grf->grfid == grfid) {
-			if (memcmp(md5sum, grf->md5sum, sizeof(grf->md5sum)) == 0) return grf->name;
+	for (const auto &grf : unknown_grfs) {
+		if (grf.grfid == grfid) {
+			if (memcmp(md5sum, grf.md5sum, sizeof(grf.md5sum)) == 0) return grf.name;
 		}
 	}
 
 	if (!create) return nullptr;
 
-	grf = CallocT<UnknownGRF>(1);
-	grf->grfid = grfid;
-	grf->next  = unknown_grfs;
-	grf->name = new GRFTextWrapper();
-	grf->name->AddRef();
+	unknown_grfs.emplace_back(grfid, md5sum);
+	UnknownGRF &grf = unknown_grfs.back();
 
-	AddGRFTextToList(&grf->name->text, UNKNOWN_GRF_NAME_PLACEHOLDER);
-	memcpy(grf->md5sum, md5sum, sizeof(grf->md5sum));
+	AddGRFTextToList(grf.name, UNKNOWN_GRF_NAME_PLACEHOLDER);
 
-	unknown_grfs = grf;
-	return grf->name;
+	return grf.name;
 }
 
 /**

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -60,7 +58,7 @@ static DWORD WINAPI SoundThread(LPVOID arg)
 	return 0;
 }
 
-const char *SoundDriver_Win32::Start(const char * const *parm)
+const char *SoundDriver_Win32::Start(const StringList &parm)
 {
 	WAVEFORMATEX wfex;
 	wfex.wFormatTag = WAVE_FORMAT_PCM;

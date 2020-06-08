@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -19,9 +17,10 @@
 
 void InitializeOldNames();
 StringID RemapOldStringID(StringID s);
-char *CopyFromOldName(StringID id);
+std::string CopyFromOldName(StringID id);
 void ResetOldNames();
 
+void ResetOldWaypoints();
 void MoveBuoysToWaypoints();
 void MoveWaypointsToBaseStations();
 const SaveLoad *GetBaseStationDescription();
@@ -31,6 +30,7 @@ void FixupTrainLengths();
 void AfterLoadTemplateVehicles();
 void AfterLoadStations();
 void AfterLoadRoadStops();
+void ResetLabelMaps();
 void AfterLoadLabelMaps();
 void AfterLoadStoryBook();
 void AfterLoadLinkGraphs();
@@ -46,6 +46,7 @@ void ResetViewportAfterLoadGame();
 void ConvertOldMultiheadToNew();
 void ConnectMultiheadedTrains();
 
+void ResetTempEngineData();
 Engine *GetTempDataEngine(EngineID index);
 void CopyTempEngineData();
 

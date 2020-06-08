@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -22,6 +20,7 @@
 #include "core/random_func.hpp"
 #include "vehiclelist.h"
 #include "road.h"
+#include "ai/ai.hpp"
 
 #include "table/strings.h"
 
@@ -386,6 +385,7 @@ CommandCost CopyHeadSpecificThings(Vehicle *old_head, Vehicle *new_head, DoComma
 		ChangeVehicleNews(old_head->index, new_head->index);
 
 		if (old_head->type == VEH_TRAIN) {
+			Train::From(new_head)->speed_restriction = Train::From(old_head)->speed_restriction;
 			/* Transfer any acquired trace restrict slots to the new vehicle */
 			if (HasBit(Train::From(old_head)->flags, VRF_HAVE_SLOT)) {
 				TraceRestrictTransferVehicleOccupantInAllSlots(old_head->index, new_head->index);
@@ -434,6 +434,8 @@ static CommandCost ReplaceFreeUnit(Vehicle **single_unit, DoCommandFlag flags, b
 			TransferCargo(old_v, new_v, false);
 
 			*single_unit = new_v;
+
+			AI::NewEvent(old_v->owner, new ScriptEventVehicleAutoReplaced(old_v->index, new_v->index));
 		}
 
 		/* Sell the old vehicle */
@@ -597,14 +599,17 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlag flags, bool wagon
 
 					if ((flags & DC_EXEC) != 0) TransferCargo(w, new_head, true);
 
+					if ((flags & DC_EXEC) != 0) {
+						old_vehs[i] = nullptr;
+						if (i == 0) {
+							AI::NewEvent(old_head->owner, new ScriptEventVehicleAutoReplaced(old_head->index, new_head->index));
+							old_head = nullptr;
+						}
+					}
 					/* Sell the vehicle.
 					 * Note: This might temporarily construct new trains, so use DC_AUTOREPLACE to prevent
 					 *       it from failing due to engine limits. */
 					cost.AddCost(DoCommand(0, w->index, 0, flags | DC_AUTOREPLACE, GetCmdSellVeh(w)));
-					if ((flags & DC_EXEC) != 0) {
-						old_vehs[i] = nullptr;
-						if (i == 0) old_head = nullptr;
-					}
 				}
 
 				if ((flags & DC_EXEC) != 0) CheckCargoCapacity(new_head);
@@ -657,6 +662,8 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlag flags, bool wagon
 				if ((flags & DC_EXEC) != 0) {
 					TransferCargo(old_head, new_head, true);
 					*chain = new_head;
+
+					AI::NewEvent(old_head->owner, new ScriptEventVehicleAutoReplaced(old_head->index, new_head->index));
 				}
 
 				/* Sell the old vehicle */

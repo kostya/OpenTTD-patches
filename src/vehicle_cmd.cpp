@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -35,6 +33,8 @@
 #include "core/random_func.hpp"
 #include "tbtr_template_vehicle.h"
 #include "tbtr_template_vehicle_func.h"
+#include <sstream>
+#include <iomanip>
 
 #include "table/strings.h"
 
@@ -138,7 +138,7 @@ CommandCost CmdBuildVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	/* If we are refitting we need to temporarily purchase the vehicle to be able to
 	 * test it. */
 	DoCommandFlag subflags = flags;
-	if (refitting) subflags |= DC_EXEC;
+	if (refitting && !(flags & DC_EXEC)) subflags |= DC_EXEC | DC_AUTOREPLACE;
 
 	/* Vehicle construction needs random bits, so we have to save the random
 	 * seeds to prevent desyncs. */
@@ -155,13 +155,14 @@ CommandCost CmdBuildVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	}
 
 	if (value.Succeeded()) {
-		if (refitting || (flags & DC_EXEC)) {
+		if (subflags & DC_EXEC) {
 			v->unitnumber = unit_num;
 			v->value      = value.GetCost();
 		}
 
 		if (refitting) {
-			value.AddCost(CmdRefitVehicle(tile, flags, v->index, cargo, nullptr));
+			/* Refit only one vehicle. If we purchased an engine, it may have gained free wagons. */
+			value.AddCost(CmdRefitVehicle(tile, flags, v->index, cargo | (1 << 16), nullptr));
 		} else {
 			/* Fill in non-refitted capacities */
 			_returned_refit_capacity = e->GetDisplayDefaultCapacity(&_returned_mail_refit_capacity);
@@ -170,27 +171,27 @@ CommandCost CmdBuildVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 		if (flags & DC_EXEC) {
 			InvalidateWindowData(WC_VEHICLE_DEPOT, v->tile);
 			InvalidateWindowClassesData(GetWindowClassForVehicleType(type), 0);
+			InvalidateWindowClassesData(WC_DEPARTURES_BOARD, 0);
 			SetWindowDirty(WC_COMPANY, _current_company);
 			if (IsLocalCompany()) {
 				InvalidateAutoreplaceWindow(v->engine_type, v->group_id); // updates the auto replace window (must be called before incrementing num_engines)
 			}
 		}
 
-		if (refitting || (flags & DC_EXEC)) {
+		if (subflags & DC_EXEC) {
 			GroupStatistics::CountEngine(v, 1);
 			GroupStatistics::UpdateAutoreplace(_current_company);
 
 			if (v->IsPrimaryVehicle()) {
 				GroupStatistics::CountVehicle(v, 1);
+				if (!(subflags & DC_AUTOREPLACE)) OrderBackup::Restore(v, p2);
 			}
 		}
 
 
 		/* If we are not in DC_EXEC undo everything */
-		if (refitting && (flags & DC_EXEC) == 0) {
+		if (flags != subflags) {
 			DoCommand(0, v->index, 0, DC_EXEC, GetCmdSellVeh(v));
-		} else if ((flags & DC_EXEC) && v->IsPrimaryVehicle()) {
-			OrderBackup::Restore(v, p2);
 		}
 	}
 
@@ -492,10 +493,11 @@ CommandCost CmdRefitVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	Vehicle *front = v->First();
 
 	bool auto_refit = HasBit(p2, 24);
-	bool is_virtual_train = HasBit(p2, 31);
+	bool is_virtual_train = v->type == VEH_TRAIN && Train::From(front)->IsVirtual();
+	bool virtual_train_mode = HasBit(p2, 31) || is_virtual_train;
 	bool free_wagon = v->type == VEH_TRAIN && Train::From(front)->IsFreeWagon(); // used by autoreplace/renew
 
-	if (is_virtual_train || (v->type == VEH_TRAIN && Train::From(front)->IsVirtual())) {
+	if (virtual_train_mode) {
 		CommandCost ret = CheckOwnership(front->owner);
 		if (ret.Failed()) return ret;
 	} else {
@@ -507,15 +509,13 @@ CommandCost CmdRefitVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	if (v != front && (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT)) return CMD_ERROR;
 
 	/* Allow auto-refitting only during loading and normal refitting only in a depot. */
-	if (!is_virtual_train) {
+	if (!virtual_train_mode) {
 		if ((flags & DC_QUERY_COST) == 0 && // used by the refit GUI, including the order refit GUI.
 				!free_wagon && // used by autoreplace/renew
 				(!auto_refit || !front->current_order.IsType(OT_LOADING)) && // refit inside stations
 				!front->IsStoppedInDepot()) { // refit inside depots
 			return_cmd_error(STR_ERROR_TRAIN_MUST_BE_STOPPED_INSIDE_DEPOT + front->type);
 		}
-
-		if (front->vehstatus & VS_CRASHED) return_cmd_error(STR_ERROR_VEHICLE_IS_DESTROYED);
 	}
 
 	if (front->vehstatus & VS_CRASHED) return_cmd_error(STR_ERROR_VEHICLE_IS_DESTROYED);
@@ -530,6 +530,7 @@ CommandCost CmdRefitVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	uint8 num_vehicles = GB(p2, 16, 8);
 
 	CommandCost cost = RefitVehicle(v, only_this, num_vehicles, new_cid, new_subtype, flags, auto_refit);
+	if (is_virtual_train && !(flags & DC_QUERY_COST)) cost.MultiplyCost(0);
 
 	if (flags & DC_EXEC) {
 		/* Update the cached variables */
@@ -559,6 +560,7 @@ CommandCost CmdRefitVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 		if (!free_wagon) {
 			InvalidateWindowData(WC_VEHICLE_DETAILS, front->index);
 			InvalidateWindowClassesData(GetWindowClassForVehicleType(v->type), 0);
+			InvalidateWindowClassesData(WC_DEPARTURES_BOARD, 0);
 		}
 		/* virtual vehicles get their cargo changed by the TemplateCreateWindow, so set this dirty instead of a depot window */
 		if (HasBit(v->subtype, GVSF_VIRTUAL)) {
@@ -784,10 +786,8 @@ CommandCost CmdDepotMassAutoReplace(TileIndex tile, DoCommandFlag flags, uint32 
  */
 static bool IsUniqueVehicleName(const char *name)
 {
-	const Vehicle *v;
-
-	FOR_ALL_VEHICLES(v) {
-		if (v->name != nullptr && strcmp(v->name, name) == 0) return false;
+	for (const Vehicle *v : Vehicle::Iterate()) {
+		if (!v->name.empty() && v->name == name) return false;
 	}
 
 	return true;
@@ -800,42 +800,49 @@ static bool IsUniqueVehicleName(const char *name)
  */
 static void CloneVehicleName(const Vehicle *src, Vehicle *dst)
 {
-	char buf[256];
+	std::string buf;
+	std::string src_name = src->name.c_str();
 
 	/* Find the position of the first digit in the last group of digits. */
 	size_t number_position;
-	for (number_position = strlen(src->name); number_position > 0; number_position--) {
+	for (number_position = src_name.length(); number_position > 0; number_position--) {
 		/* The design of UTF-8 lets this work simply without having to check
 		 * for UTF-8 sequences. */
-		if (src->name[number_position - 1] < '0' || src->name[number_position - 1] > '9') break;
+		if (src_name[number_position - 1] < '0' || src_name[number_position - 1] > '9') break;
 	}
 
 	/* Format buffer and determine starting number. */
-	int num;
+	long num;
 	byte padding = 0;
-	if (number_position == strlen(src->name)) {
+	if (number_position == src_name.length()) {
 		/* No digit at the end, so start at number 2. */
-		strecpy(buf, src->name, lastof(buf));
-		strecat(buf, " ", lastof(buf));
-		number_position = strlen(buf);
+		buf = src_name;
+		buf += " ";
+		number_position = buf.length();
 		num = 2;
 	} else {
 		/* Found digits, parse them and start at the next number. */
-		strecpy(buf, src->name, lastof(buf));
-		buf[number_position] = '\0';
-		char *endptr;
-		num = strtol(&src->name[number_position], &endptr, 10) + 1;
-		padding = endptr - &src->name[number_position];
+		buf = src_name.substr(0, number_position);
+
+		auto num_str = src_name.substr(number_position);
+		padding = (byte)num_str.length();
+
+		std::istringstream iss(num_str);
+		iss >> num;
+		num++;
 	}
 
 	/* Check if this name is already taken. */
 	for (int max_iterations = 1000; max_iterations > 0; max_iterations--, num++) {
+		std::ostringstream oss;
+
 		/* Attach the number to the temporary name. */
-		seprintf(&buf[number_position], lastof(buf), "%0*d", padding, num);
+		oss << buf << std::setw(padding) << std::setfill('0') << std::internal << num;
 
 		/* Check the name is unique. */
-		if (IsUniqueVehicleName(buf)) {
-			dst->name = stredup(buf);
+		auto new_name = oss.str();
+		if (IsUniqueVehicleName(new_name.c_str())) {
+			dst->name = new_name;
 			break;
 		}
 	}
@@ -1155,12 +1162,14 @@ CommandCost CmdReplaceTemplateVehicle(TileIndex tile, DoCommandFlag flags, uint3
 
 		// Make sure our replacements still point to the correct thing.
 		if (old_ID != template_vehicle->index) {
-			TemplateReplacement* tr;
-			FOR_ALL_TEMPLATE_REPLACEMENTS(tr) {
+			bool reindex = false;
+			for (TemplateReplacement *tr : TemplateReplacement::Iterate()) {
 				if (tr->GetTemplateVehicleID() == old_ID) {
 					tr->SetTemplate(template_vehicle->index);
+					reindex = true;
 				}
 			}
+			if (reindex) ReindexTemplateReplacements();
 		}
 
 		InvalidateWindowClassesData(WC_TEMPLATEGUI_MAIN, 0);
@@ -1244,8 +1253,7 @@ CommandCost CmdDeleteTemplateVehicle(TileIndex tile, DoCommandFlag flags, uint32
 
 	if (should_execute) {
 		// Remove corresponding template replacements if existing
-		TemplateReplacement *tr;
-		FOR_ALL_TEMPLATE_REPLACEMENTS(tr) {
+		for (TemplateReplacement *tr : TemplateReplacement::Iterate()) {
 			if (tr->Template() == del->index) {
 				delete tr;
 			}
@@ -1485,7 +1493,7 @@ CommandCost CmdCloneVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 		DoCommand(0, w_front->index | (p2 & 1 ? CO_SHARE : CO_COPY) << 30, v_front->index, flags, CMD_CLONE_ORDER);
 
 		/* Now clone the vehicle's name, if it has one. */
-		if (v_front->name != nullptr) CloneVehicleName(v_front, w_front);
+		if (!v_front->name.empty()) CloneVehicleName(v_front, w_front);
 	}
 
 	/* Since we can't estimate the cost of cloning a vehicle accurately we must
@@ -1612,9 +1620,13 @@ CommandCost CmdRenameVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uin
 	}
 
 	if (flags & DC_EXEC) {
-		free(v->name);
-		v->name = reset ? nullptr : stredup(text);
+		if (reset) {
+			v->name.clear();
+		} else {
+			v->name = text;
+		}
 		InvalidateWindowClassesData(GetWindowClassForVehicleType(v->type), 1);
+		InvalidateWindowClassesData(WC_DEPARTURES_BOARD, 0);
 		MarkWholeScreenDirty();
 	}
 

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -18,6 +16,7 @@
 #include "vehicle_type.h"
 #include "engine_type.h"
 #include "livery.h"
+#include <string>
 
 typedef Pool<Group, GroupID, 16, 64000> GroupPool;
 extern GroupPool _group_pool; ///< Pool of groups.
@@ -65,7 +64,7 @@ struct GroupStatistics {
 
 /** Group data. */
 struct Group : GroupPool::PoolItem<&_group_pool> {
-	char *name;                 ///< Group Name
+	std::string name;           ///< Group Name
 	Owner owner;                ///< Group Owner
 	VehicleType vehicle_type;   ///< Vehicle type of the group
 
@@ -78,7 +77,6 @@ struct Group : GroupPool::PoolItem<&_group_pool> {
 	GroupID parent;             ///< Parent group
 
 	Group(CompanyID owner = INVALID_COMPANY);
-	~Group();
 };
 
 
@@ -101,10 +99,6 @@ static inline bool IsTopLevelGroupID(GroupID index)
 {
 	return index == DEFAULT_GROUP || index == ALL_GROUP;
 }
-
-#define FOR_ALL_GROUPS_FROM(var, start) FOR_ALL_ITEMS_FROM(Group, group_index, var, start)
-#define FOR_ALL_GROUPS(var) FOR_ALL_GROUPS_FROM(var, 0)
-
 
 uint GetGroupNumEngines(CompanyID company, GroupID id_g, EngineID id_e);
 uint GetGroupNumVehicle(CompanyID company, GroupID id_g, VehicleType type);

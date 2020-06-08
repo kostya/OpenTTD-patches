@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -13,6 +11,7 @@
 #include "script_town.hpp"
 #include "script_map.hpp"
 #include "script_error.hpp"
+#include "script_controller.hpp"
 #include "../../town.h"
 #include "../../townname_func.h"
 #include "../../string_func.h"
@@ -60,9 +59,11 @@
 {
 	CCountedPtr<Text> counter(text);
 
-	EnforcePrecondition(false, text != nullptr);
-	const char *encoded_text = text->GetEncodedText();
-	EnforcePreconditionEncodedText(false, encoded_text);
+	const char *encoded_text = nullptr;
+	if (text != nullptr) {
+		encoded_text = text->GetEncodedText();
+		EnforcePreconditionEncodedText(false, encoded_text);
+	}
 	EnforcePrecondition(false, IsValidTown(town_id));
 
 	return ScriptObject::DoCommand(::Town::Get(town_id)->xy, town_id, 0, CMD_TOWN_SET_TEXT, encoded_text);
@@ -280,6 +281,8 @@
 
 /* static */ bool ScriptTown::FoundTown(TileIndex tile, TownSize size, bool city, RoadLayout layout, Text *name)
 {
+	ScriptController::DecreaseOps(5000);
+
 	CCountedPtr<Text> counter(name);
 
 	EnforcePrecondition(false, ScriptObject::GetCompany() == OWNER_DEITY || _settings_game.economy.found_town != TF_FORBIDDEN);
@@ -301,6 +304,7 @@
 	}
 	uint32 townnameparts;
 	if (!GenerateTownName(&townnameparts)) {
+		ScriptController::DecreaseOps(50000);
 		ScriptObject::SetLastError(ScriptError::ERR_NAME_IS_NOT_UNIQUE);
 		return false;
 	}
@@ -336,6 +340,33 @@
 	}
 }
 
+/* static */ int ScriptTown::GetDetailedRating(TownID town_id, ScriptCompany::CompanyID company_id)
+{
+	if (!IsValidTown(town_id)) return TOWN_RATING_INVALID;
+	ScriptCompany::CompanyID company = ScriptCompany::ResolveCompanyID(company_id);
+	if (company == ScriptCompany::COMPANY_INVALID) return TOWN_RATING_INVALID;
+
+	const Town *t = ::Town::Get(town_id);
+	return t->ratings[company];
+}
+
+/* static */ bool ScriptTown::ChangeRating(TownID town_id, ScriptCompany::CompanyID company_id, int delta)
+{
+	EnforcePrecondition(false, ScriptObject::GetCompany() == OWNER_DEITY);
+	EnforcePrecondition(false, IsValidTown(town_id));
+	ScriptCompany::CompanyID company = ScriptCompany::ResolveCompanyID(company_id);
+	EnforcePrecondition(false, company != ScriptCompany::COMPANY_INVALID);
+
+	const Town *t = ::Town::Get(town_id);
+	int16 new_rating = Clamp(t->ratings[company] + delta, RATING_MINIMUM, RATING_MAXIMUM);
+	if (new_rating == t->ratings[company]) return false;
+
+	uint16 p2 = 0;
+	memcpy(&p2, &new_rating, sizeof(p2));
+
+	return ScriptObject::DoCommand(0, town_id | (company_id << 16), p2, CMD_TOWN_RATING);
+}
+
 /* static */ int ScriptTown::GetAllowedNoise(TownID town_id)
 {
 	if (!IsValidTown(town_id)) return -1;
@@ -346,8 +377,7 @@
 	}
 
 	int num = 0;
-	const Station *st;
-	FOR_ALL_STATIONS(st) {
+	for (const Station *st : Station::Iterate()) {
 		if (st->town == t && (st->facilities & FACIL_AIRPORT) && st->airport.type != AT_OILRIG) num++;
 	}
 	return max(0, 2 - num);

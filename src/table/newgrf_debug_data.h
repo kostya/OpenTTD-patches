@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -104,6 +102,21 @@ class NIHVehicle : public NIHelper {
 		seprintf(buffer, lastof(buffer), "  V Cache: max speed: %u, cargo age period: %u, vis effect: %u",
 				v->vcache.cached_max_speed, v->vcache.cached_cargo_age_period, v->vcache.cached_vis_effect);
 		print(buffer);
+		if (v->cargo_type != CT_INVALID) {
+			seprintf(buffer, lastof(buffer), "  V Cargo: type: %u, cap: %u, transfer: %u, deliver: %u, keep: %u, load: %u",
+					v->cargo_type, v->cargo_cap,
+					v->cargo.ActionCount(VehicleCargoList::MTA_TRANSFER), v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER),
+					v->cargo.ActionCount(VehicleCargoList::MTA_KEEP), v->cargo.ActionCount(VehicleCargoList::MTA_LOAD));
+			print(buffer);
+		}
+		if (BaseStation::IsValidID(v->last_station_visited)) {
+			seprintf(buffer, lastof(buffer), "  V Last station visited: %u, %s", v->last_station_visited, BaseStation::Get(v->last_station_visited)->GetCachedName());
+			print(buffer);
+		}
+		if (BaseStation::IsValidID(v->last_loading_station)) {
+			seprintf(buffer, lastof(buffer), "  V Last loading visited: %u, %s", v->last_loading_station, BaseStation::Get(v->last_loading_station)->GetCachedName());
+			print(buffer);
+		}
 		if (v->IsGroundVehicle()) {
 			const GroundVehicleCache &gvc = *(v->GetGroundVehicleCache());
 			seprintf(buffer, lastof(buffer), "  GV Cache: weight: %u, slope res: %u, max TE: %u, axle res: %u",
@@ -163,6 +176,7 @@ static const NIVariable _niv_stations[] = {
 	NIV(0x67, "land info of nearby tiles"),
 	NIV(0x68, "station info of nearby tiles"),
 	NIV(0x69, "information about cargo accepted in the past"),
+	NIV(0x6A, "GRFID of nearby station tiles"),
 	NIV_END()
 };
 
@@ -243,6 +257,21 @@ class NIHHouse : public NIHelper {
 	{
 		HouseResolverObject ro(GetHouseType(index), index, Town::GetByTile(index));
 		return ro.GetScope(VSG_SCOPE_SELF)->GetVariable(var, param, avail);
+	}
+
+	void ExtraInfo(uint index, std::function<void(const char *)> print) const override
+	{
+		char buffer[1024];
+		print("Debug Info:");
+		seprintf(buffer, lastof(buffer), "  House Type: %u", GetHouseType(index));
+		print(buffer);
+		const HouseSpec *hs = HouseSpec::Get(GetHouseType(index));
+		seprintf(buffer, lastof(buffer), "  building_flags: 0x%X", hs->building_flags);
+		print(buffer);
+		seprintf(buffer, lastof(buffer), "  extra_flags: 0x%X", hs->extra_flags);
+		print(buffer);
+		seprintf(buffer, lastof(buffer), "  remove_rating_decrease: %u", hs->remove_rating_decrease);
+		print(buffer);
 	}
 };
 
@@ -517,6 +546,34 @@ class NIHRailType : public NIHelper {
 		RailTypeResolverObject ro(nullptr, index, TCX_NORMAL, RTSG_END);
 		return ro.GetScope(VSG_SCOPE_SELF)->GetVariable(var, param, avail);
 	}
+
+	void ExtraInfo(uint index, std::function<void(const char *)> print) const override
+	{
+		char buffer[1024];
+
+		RailType primary = GetTileRailType(index);
+		RailType secondary = GetTileSecondaryRailTypeIfValid(index);
+
+		auto writeRailType = [&](RailType type) {
+			const RailtypeInfo *info = GetRailTypeInfo(type);
+			seprintf(buffer, lastof(buffer), "  Type: %u", type);
+			print(buffer);
+			seprintf(buffer, lastof(buffer), "  Flags: %c%c%c%c%c%c",
+					HasBit(info->flags, RTF_CATENARY) ? 'c' : '-',
+					HasBit(info->flags, RTF_NO_LEVEL_CROSSING) ? 'l' : '-',
+					HasBit(info->flags, RTF_HIDDEN) ? 'h' : '-',
+					HasBit(info->flags, RTF_NO_SPRITE_COMBINE) ? 's' : '-',
+					HasBit(info->flags, RTF_ALLOW_90DEG) ? 'a' : '-',
+					HasBit(info->flags, RTF_DISALLOW_90DEG) ? 'd' : '-');
+			print(buffer);
+		};
+
+		print("Debug Info:");
+		writeRailType(primary);
+		if (secondary != INVALID_RAILTYPE) {
+			writeRailType(secondary);
+		}
+	}
 };
 
 static const NIFeature _nif_railtype = {
@@ -681,6 +738,10 @@ class NIHStationStruct : public NIHelper {
 				seprintf(buffer, lastof(buffer), "    %u: %s", ind->index, ind->GetCachedName());
 				print(buffer);
 			}
+			seprintf(buffer, lastof(buffer), "  Station tiles: %u", st->station_tiles);
+			print(buffer);
+			seprintf(buffer, lastof(buffer), "  Delete counter: %u", st->delete_ctr);
+			print(buffer);
 		}
 	}
 };

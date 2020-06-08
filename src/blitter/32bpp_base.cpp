@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -103,7 +101,7 @@ void Blitter_32bppBase::CopyImageToBuffer(const void *video, void *dst, int widt
 	}
 }
 
-void Blitter_32bppBase::ScrollBuffer(void *video, int &left, int &top, int &width, int &height, int scroll_x, int scroll_y)
+void Blitter_32bppBase::ScrollBuffer(void *video, int left, int top, int width, int height, int scroll_x, int scroll_y)
 {
 	const uint32 *src;
 	uint32 *dst;
@@ -116,7 +114,7 @@ void Blitter_32bppBase::ScrollBuffer(void *video, int &left, int &top, int &widt
 		/* Decrease height and increase top */
 		top += scroll_y;
 		height -= scroll_y;
-		assert(height > 0);
+		assert_msg(height > 0, "%d, %d, %d, %d, %d, %d", left, top, width, height, scroll_x, scroll_y);
 
 		/* Adjust left & width */
 		if (scroll_x >= 0) {
@@ -140,7 +138,7 @@ void Blitter_32bppBase::ScrollBuffer(void *video, int &left, int &top, int &widt
 
 		/* Decrease height. (scroll_y is <=0). */
 		height += scroll_y;
-		assert(height > 0);
+		assert_msg(height > 0, "%d, %d, %d, %d, %d, %d", left, top, width, height, scroll_x, scroll_y);
 
 		/* Adjust left & width */
 		if (scroll_x >= 0) {

@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -72,8 +70,8 @@ protected:
 		int p1 = Yapf().PfGetSettings().rail_look_ahead_signal_p1;
 		int p2 = Yapf().PfGetSettings().rail_look_ahead_signal_p2;
 		int *pen = m_sig_look_ahead_costs.GrowSizeNC(Yapf().PfGetSettings().rail_look_ahead_max_signals);
-		for (uint i = 0; i < Yapf().PfGetSettings().rail_look_ahead_max_signals; i++) {
-			pen[i] = p0 + i * (p1 + i * p2);
+		for (int i = 0; i < (int) Yapf().PfGetSettings().rail_look_ahead_max_signals; i++) {
+			pen[i] = max<int>(0, p0 + i * (p1 + i * p2));
 		}
 	}
 
@@ -216,6 +214,8 @@ private:
 				TileIndex candidate_tile = INVALID_TILE;
 
 				if (IsRailDepotTile(v->tile)) {
+					candidate_tile = v->tile;
+				} else if (v->track & TRACK_BIT_WORMHOLE && IsTileType(v->tile, MP_TUNNELBRIDGE) && IsTunnelBridgeSignalSimulationExit(v->tile) && IsTunnelBridgePBS(v->tile)) {
 					candidate_tile = v->tile;
 				}
 
@@ -482,8 +482,8 @@ public:
 			int y1 = 2 * TileY(prev.tile);
 			int x2 = 2 * TileX(cur.tile);
 			int y2 = 2 * TileY(cur.tile);
-			int dx = abs(x1 - x2);
-			int dy = abs(y1 - y2);
+			int dx = abs(x1 - x2) + 4; // up to 2x track exit dir tile offsets in opposite directions
+			int dy = abs(y1 - y2) + 4; // "
 			int dmin = min(dx, dy);
 			int dxy = abs(dx - dy);
 			segment_entry_cost += dmin * YAPF_TILE_CORNER_LENGTH + (dxy - 1) * (YAPF_TILE_LENGTH / 2);

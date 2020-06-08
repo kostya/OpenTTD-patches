@@ -2,6 +2,165 @@
 
 * * *
 
+### v0.34.4 (2020-06-05)
+* Fix crash which could occur when pathfinding over railtypes which prohibit 90° turns.
+* Fix vehicle refit when used with per-cargo no-load orders.
+* Add support for fences and bare land to rail custom bridge heads.
+* Bump trunk base from commit 83cd040c61cf6ce966e78cc496c058d42977b387 to commit eeed3a7613d375f66781f53b42e03729a4ca1c33.
+
+### v0.34.3 (2020-05-14)
+* Fix crash which could occur when using the reverse behind signal feature.
+* Fix text entry using modifier keys when using Fcitx on Linux/SDL2.
+* Continue waiting at rail waypoint if the next order is a wait order for the same waypoint.
+* Conditional orders:
+  * Fix comparison operator not being reset when switching variable to load percentage or waiting cargo amount.
+  * Add mode to waiting cargo amount variable to check waiting station cargo via next node.
+  * Add slot acquire modes to train in slot conditional.
+  * Improve cargo dist link refresher handling of complex conditional orders.
+* Fix compilation on MSVC.
+* Various changes to improve thread safety/data races.
+* Bump trunk base from commit 1f1345de098294a4744981d0043512569a35102a to commit 83cd040c61cf6ce966e78cc496c058d42977b387.
+
+### v0.34.2 (2020-05-01)
+* Fix crash which could occur when scrolling the viewport.
+* Fix crash which could occur when using the reverse behind signal feature.
+* Fix a source of multiplayer desyncs caused by the build and refit vehicle feature.
+* Fix removing a track piece from a rail custom bridge head to create two parallel tracks assigning the wrong track type to the non-bridge track.
+* Fix cargo type load orders which contain both load if available and full load loading types.
+* Fix timetable handling of wait at depot or waypoint orders in the departures window.
+* Fix graphical rendering issues (clipping/flickering) in some circumstances.
+* Fix too short length limit of waiting cargo amount conditional order text input.
+* Fix `screenshot minimap <name>` console command ignoring the name parameter.
+* Fix GameScripts being able to consume all available CPU time by repeatedly attempting to found a town.
+* Cheats:
+  * Add support for server admin use of money, magic bulldozer, tunnels and jet crashes cheats in multiplayer.
+  * Add setting to allow non server admins to use the money cheat in multiplayer.
+  * Add cheats to set inflation income and cost factors.
+* Ctrl-click up/down in NewGRF window to move to top or bottom.
+* Minor performance improvements.
+* Add Korean translations by TELK.
+* Bump trunk base from commit 9339e4dcad8aa74ff1b2723ea63a2e31c23f5d44 to commit 1f1345de098294a4744981d0043512569a35102a.
+
+### v0.34.1 (2020-04-13)
+* Fix crash which could occur at startup for some combinations of resolution and zoom settings.
+* Fix crash which could occur on WINE on systems with more than two network interfaces.
+* Scheduled dispatch:
+  * Fix double dispatch request when timetable is not started.
+  * Fix lateness not being updated when timetabled waiting time at dispatch point changes.
+  * Fix dispatch order timetabled waiting time being taken as zero in some circumstances.
+* Various changes to improve thread safety/data races.
+* Bump trunk base from commit b50d77b831c60f9f162a6f1d2bc9ca19e702784e to commit 9339e4dcad8aa74ff1b2723ea63a2e31c23f5d44.
+
+### v0.34.0 (2020-04-07)
+* Fix crash when attempting to draw zero-size or invalid sprite.
+* Fix crash which could occur when scrolling the viewport on some platforms.
+* Fix crash which could occur when renaming a vehicle group or engine, when the list window is open and sorted by name, on some platforms.
+* Fix crash which could occur when changing company colours when invalid NewGRF objects are present.
+* Add support for allowing/disallowing supply to a station, per cargo, by ctrl-clicking the station cargo rating.
+* Open train vehicle details window on total cargo tab if shift pressed, instead of ctrl.
+* Increase margin between right-hand columns in depatures window.
+* Fix window/viewport rendering regressions from v0.34-rc1.
+* Bump trunk base from commit 71913607540088819b60f12b765504ab7dfe7a64 to commit b50d77b831c60f9f162a6f1d2bc9ca19e702784e.
+
+### v0.34-rc1 (2020-03-11)
+* Fix crash when using house pick/place tool with NewGRF houses.
+* Fix crash which could occur when using a high town cargo generation factor.
+* Fix crash which could occur when re-arranging a train displayed in a departure board window.
+* Fix text rendering issue with scheduled dispatch tag in timetable/order list.
+* Various viewport rendering performance improvements, especially at higher zoom levels.
+* Minor performance improvements to vehicle collision detection.
+* Bump trunk base from commit 75031c9693ee0525c75e8e02ead345b1f8264735 to commit 71913607540088819b60f12b765504ab7dfe7a64.
+
+### v0.33.2 (2020-02-21)
+* Fix crash on 32-bit platforms.
+* Fix crash which could occur when moving new cargo to nearby stations.
+* Bump trunk base from commit 2b6df2544fd2896e09eac24598721e5259ff791f to commit 75031c9693ee0525c75e8e02ead345b1f8264735.
+
+### v0.33.1 (2020-02-13)
+* Template-based train replacement:
+  * Fix template replacement refits having 0 cost.
+  * Fix drawing artefacts when resizing replacement window.
+  * Send train to depot when replacement due but servicing is disabled.
+  * Template replacements now also apply to child groups.
+* Link graph:
+  * Fix demand allocation in partitioned graphs.
+  * Fix slightly uneven demand allocation in asymmetric (equal) mode.
+* Scheduled dispatch:
+  * Various improvements to the user interface.
+  * Fix times shown in timetable window when using scheduled dispatch.
+  * Fix handling of wait time associated with scheduled dispatch order.
+  * No longer require order list to be fully timetabled.
+  * Invalid departure slots are now ignored.
+* Fix incorrect town noise level when a town had multiple airports.
+* Fix incorrect reservation when a signal is removed from under a train when the front is in a signalled tunnel/bridge.
+* Add conditional orders for cargo load percentage and waiting cargo amount.
+* Adjust timetable automation to bias wait time adjustments in positive direction.
+* Various viewport rendering performance improvements.
+* Bump trunk base from commit 8b0e4bb10170d8eeb882f0fcc0ad58e80d751027 to commit 2b6df2544fd2896e09eac24598721e5259ff791f.
+
+### v0.33.0 (2020-01-10)
+* Fix crash when post road-works cleanup removes all road pieces.
+* Fix crash when checking for train reverse on custom bridge heads with YAPF.
+* Template-based train replacement:
+  * Fix incorrect train not buildable warning with articulated units.
+  * Fix refitting of virtual trains costing actual money.
+* Fix set timetabled wait time for all orders command setting wait times for waypoint orders.
+* Add support for loading JokerPP v1.19 - v1.27 savegames, subject to caveats.
+* Add support for loading ChillPP v8 and v14.7 savegames, subject to caveats.
+* Improve performance of departures window.
+* Fix compilation on MSVC.
+* Add Korean translations by TELK.
+* Bump trunk base from commit 35dc377a58c90abb67304a0c557449b6db3c0d3f to commit 8b0e4bb10170d8eeb882f0fcc0ad58e80d751027.
+
+### v0.32.4 (2019-12-13)
+* Fix incorrect company infrastructure totals and multiplayer desyncs when removing tram road stops.
+* Fix vehicle autoreplace AI event when autoreplacing trains.
+* Add patch: show the name of the NewGRF in the build vehicle window.
+* Routing restrictions: Add speed restriction feature.
+* Rename programmable signals to programmable pre-signals.
+* Bump trunk base from commit ef8455f5498cc01bc60eb1c02902c38bbc332a7a to commit 35dc377a58c90abb67304a0c557449b6db3c0d3f.
+
+### v0.32.3 (2019-11-20)
+* Fix loading of savegames which use LZO compression.
+* Fix crash which could occur when attempting to load an unreadable/invalid savegame.
+* Fix crash which could occur when attempting to stop an aircraft which is outside the map.
+* Fix aircraft possibly being routed to the wrong hangar when using the send to hangar button on an aircraft which is outside the map.
+* Fix some trains having zero power on load for some savegame/GRF configurations.
+* Fix the give money input textbox not correctly handling money quanitities greater than 2.1 billion in local currency units.
+* Template-based train replacement: Fix various scaling and alignment issues in the template window.
+* Routing restrictions: Add support for signalled tunnel/bridges to PBS entry signal conditional.
+* Stations under bridges:
+  * Fix use of station GRF defined bridge pillar disallowed flags.
+  * Always allow buoys under bridges.
+  * Add seperate settings for allowing NewGRF rail, road and dock stations under bridges.
+* Fix compilation on MSVC (32 bit).
+* Add Korean translations by TELK.
+* Bump trunk base from commit d5a9bd404a3ca90a18abeeaaaabdbf5185437ba7 to commit ef8455f5498cc01bc60eb1c02902c38bbc332a7a.
+
+### v0.32.2 (2019-11-06)
+* Fix crash which could occur after removing oil rig.
+* Fix crash which could occur when scanning NewGRF files.
+* MacOS: Fix crash issues on MacOS 10.15 Catalina.
+* SDL2 video driver (Linux):
+  * Fix home and end keys in text editing contexts.
+  * Fix page down key.
+  * Fix up/down and function keys printing '?' in text editing contexts.
+* Fix multiplayer issues which could occur on networks with a reduced MTU.
+* Bump trunk base from commit e2e112baaabaaeec1f04f13c3759f24c06b42cf2 to commit d5a9bd404a3ca90a18abeeaaaabdbf5185437ba7.
+
+### v0.32.1 (2019-10-20)
+* Fix "undefined string" appearing in 3rd line of error message window.
+* Fix width of bottom row of template-based train replacement create/edit template window.
+* Fix link graph link usage statistics (used for the link graph overlay colours) becoming increasingly inaccurate on large networks over time.
+* SDL2 video driver (Linux):
+  * Fix handling of shift key in text-editing mode.
+  * Fix up/down keys in console window.
+  * Fix passing keypresses to Fcitx which are unknown to SDL.
+  * Fix attempting to use SDL2 versions prior to 2.0.5, which do not compile.
+  * Automatically detect and use SDL1 if SDL2 is not present and usable.
+* Fix compilation on MSVC and on Mac OSX.
+* Add Korean translations by TELK.
+
 ### v0.32.0 (2019-10-12)
 * Fix crash when disabling infrastructure sharing with vehicles with go to nearest depot orders.
 * Fix order backup not saving/restoring timetable automation, separation and scheduled dispatch states.

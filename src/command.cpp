@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -115,6 +113,7 @@ CommandProc CmdIncreaseLoan;
 CommandProc CmdDecreaseLoan;
 
 CommandProc CmdWantEnginePreview;
+CommandProc CmdEngineCtrl;
 
 CommandProc CmdSetVehicleUnitNumber;
 
@@ -126,6 +125,8 @@ CommandProc CmdRenamePresident;
 
 CommandProc CmdRenameStation;
 CommandProc CmdRenameDepot;
+
+CommandProc CmdSetStationCargoAllowedSupply;
 
 CommandProc CmdPlaceSign;
 CommandProc CmdRenameSign;
@@ -142,6 +143,7 @@ CommandProc CmdFoundTown;
 CommandProc CmdRenameTown;
 CommandProc CmdDoTownAction;
 CommandProc CmdTownGrowthRate;
+CommandProc CmdTownRating;
 CommandProc CmdTownCargoGoal;
 CommandProc CmdTownSetText;
 CommandProc CmdExpandTown;
@@ -157,7 +159,9 @@ CommandProc CmdClearArea;
 
 CommandProc CmdGiveMoney;
 CommandProc CmdMoneyCheat;
+CommandProc CmdMoneyCheatAdmin;
 CommandProc CmdChangeBankBalance;
+CommandProc CmdCheatSetting;
 CommandProc CmdBuildCanal;
 CommandProc CmdBuildLock;
 
@@ -180,6 +184,7 @@ CommandProc CmdShowStoryPage;
 CommandProc CmdRemoveStoryPage;
 CommandProc CmdRemoveStoryPageElement;
 CommandProc CmdScrollViewport;
+CommandProc CmdStoryPageButton;
 
 CommandProc CmdLevelLand;
 
@@ -335,6 +340,7 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdDecreaseLoan,                                   0, CMDT_MONEY_MANAGEMENT      ), // CMD_DECREASE_LOAN
 
 	DEF_CMD(CmdWantEnginePreview,                              0, CMDT_VEHICLE_MANAGEMENT    ), // CMD_WANT_ENGINE_PREVIEW
+	DEF_CMD(CmdEngineCtrl,                             CMD_DEITY, CMDT_VEHICLE_MANAGEMENT    ), // CMD_ENGINE_CTRL
 
 	DEF_CMD(CmdSetVehicleUnitNumber,                           0, CMDT_OTHER_MANAGEMENT      ), // CMD_SET_VEHICLE_UNIT_NUMBER
 
@@ -346,6 +352,8 @@ static const Command _command_proc_table[] = {
 
 	DEF_CMD(CmdRenameStation,                                  0, CMDT_OTHER_MANAGEMENT      ), // CMD_RENAME_STATION
 	DEF_CMD(CmdRenameDepot,                                    0, CMDT_OTHER_MANAGEMENT      ), // CMD_RENAME_DEPOT
+
+	DEF_CMD(CmdSetStationCargoAllowedSupply,                   0, CMDT_OTHER_MANAGEMENT      ), // CMD_SET_STATION_CARGO_ALLOWED_SUPPLY
 
 	DEF_CMD(CmdPlaceSign,                              CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_PLACE_SIGN
 	DEF_CMD(CmdRenameSign,                             CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_RENAME_SIGN
@@ -363,6 +371,7 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdDoTownAction,                                   0, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_DO_TOWN_ACTION
 	DEF_CMD(CmdTownCargoGoal,                          CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_TOWN_CARGO_GOAL
 	DEF_CMD(CmdTownGrowthRate,                         CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_TOWN_GROWTH_RATE
+	DEF_CMD(CmdTownRating,                             CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_TOWN_RATING
 	DEF_CMD(CmdTownSetText,             CMD_STR_CTRL | CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_TOWN_SET_TEXT
 	DEF_CMD(CmdExpandTown,                             CMD_DEITY, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_EXPAND_TOWN
 	DEF_CMD(CmdDeleteTown,                           CMD_OFFLINE, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_DELETE_TOWN
@@ -372,8 +381,10 @@ static const Command _command_proc_table[] = {
 
 	DEF_CMD(CmdClearArea,                            CMD_NO_TEST, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_CLEAR_AREA; destroying multi-tile houses makes town rating differ between test and execution
 
-	DEF_CMD(CmdMoneyCheat,                           CMD_OFFLINE, CMDT_CHEAT                 ), // CMD_MONEY_CHEAT
+	DEF_CMD(CmdMoneyCheat,                                     0, CMDT_CHEAT                 ), // CMD_MONEY_CHEAT
+	DEF_CMD(CmdMoneyCheatAdmin,                    CMD_SERVER_NS, CMDT_CHEAT                 ), // CMD_MONEY_CHEAT_ADMIN
 	DEF_CMD(CmdChangeBankBalance,                      CMD_DEITY, CMDT_MONEY_MANAGEMENT      ), // CMD_CHANGE_BANK_BALANCE
+	DEF_CMD(CmdCheatSetting,                          CMD_SERVER, CMDT_CHEAT                 ), // CMD_CHEAT_SETTING
 	DEF_CMD(CmdBuildCanal,                              CMD_AUTO, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_BUILD_CANAL
 	DEF_CMD(CmdCreateSubsidy,                          CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_CREATE_SUBSIDY
 	DEF_CMD(CmdCompanyCtrl, CMD_SPECTATOR | CMD_CLIENT_ID | CMD_NO_EST, CMDT_SERVER_SETTING  ), // CMD_COMPANY_CTRL
@@ -394,6 +405,7 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdRemoveStoryPage,                        CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_REMOVE_STORY_PAGE
 	DEF_CMD(CmdRemoveStoryPageElement,                 CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_REMOVE_STORY_ELEMENT_PAGE
 	DEF_CMD(CmdScrollViewport,                         CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_SCROLL_VIEWPORT
+	DEF_CMD(CmdStoryPageButton,                        CMD_DEITY, CMDT_OTHER_MANAGEMENT      ), // CMD_STORY_PAGE_BUTTON
 
 	DEF_CMD(CmdLevelLand, CMD_ALL_TILES | CMD_NO_TEST | CMD_AUTO, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_LEVEL_LAND; test run might clear tiles multiple times, in execution that only happens once
 

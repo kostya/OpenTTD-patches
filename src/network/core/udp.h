@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -258,7 +256,7 @@ public:
 	bool Listen();
 	void Close() override;
 
-	void SendPacket(Packet *p, NetworkAddress *recv, bool all = false, bool broadcast = false);
+	void SendPacket(Packet *p, NetworkAddress *recv, bool all = false, bool broadcast = false, bool short_mtu = false);
 	void ReceivePackets();
 
 	void SendNetworkGameInfo(Packet *p, const NetworkGameInfo *info);

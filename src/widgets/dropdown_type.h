@@ -1,5 +1,3 @@
-/* $Id$ */
-
 /*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
@@ -77,9 +75,9 @@ public:
  */
 class DropDownListCharStringItem : public DropDownListStringItem {
 public:
-	const char *raw_string;
+	std::string raw_string;
 
-	DropDownListCharStringItem(const char *raw_string, int result, bool masked) : DropDownListStringItem(STR_JUST_RAW_STRING, result, masked), raw_string(raw_string) {}
+	DropDownListCharStringItem(const std::string &raw_string, int result, bool masked) : DropDownListStringItem(STR_JUST_RAW_STRING, result, masked), raw_string(raw_string) {}
 
 	StringID String() const override;
 };
